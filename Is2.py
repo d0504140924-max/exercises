@@ -194,9 +194,10 @@ class Printing:
 
 
 def main():
-
     check = CheckArgv(sys.argv)
     _checked_items = check.call_all_func()
     info = FilesInfo(_checked_items)
     files_info = info.return_according_flags()
     Printing(_checked_items, files_info)
+if __name__ == '__main__':
+    main()
