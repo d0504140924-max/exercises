@@ -14,9 +14,6 @@ def os_listing(path):
 FILE_ATTRIBUTE_HIDDEN = 0x2
 FILE_ATTRIBUTE_READONLY = 0x1
 FILE_ATTRIBUTE_SYSTEM   = 0x4
-def without_hidden_files(filepath):#this function prints only visible files
-    attrs = ctypes.windll.kernel32.GetFileAttributesW(str(filepath))
-    return (attrs != -1) and bool(attrs & FILE_ATTRIBUTE_HIDDEN)
 
 
 class Flags(Enum):
