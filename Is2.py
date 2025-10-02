@@ -53,9 +53,7 @@ class CheckArgv:
         for arg in self.argv:
             if len(arg) < 2 and arg.startswith('-'):
                 raise TypeError("Flag is too short ")
-        for arg in self.argv:
-            if  arg.startswith('-') and  arg not in Flags:
-                raise TypeError("at least one flag is invalid")
+
 
 
     def split_argv(self):
@@ -67,6 +65,9 @@ class CheckArgv:
                 else:
                     self.new_argv.extend([f'-{i}' for i in arg[1:]])
         self.argv = self.new_argv
+        #for arg in self.new_argv:
+            #if arg.startswith('-') and arg not in Flags:
+                #raise TypeError("at least one flag is invalid")
 
     def list_flags(self):
         return self.new_argv
@@ -125,7 +126,7 @@ class FilesInfo:
 
         base_list = self.also_hidden_files() if a else self.visible_files()
         if r:
-            return self._files_details(base_list)
+            return self._subfiles(base_list)
         else:
             return base_list
 
@@ -145,7 +146,7 @@ class Printing:
         return f'[{size_s:>8} | {date_s} {time_s} | {perm}]'
 
     def final_printing_indent(self, base=None, indent=1):
-        l = ('l' in self.flags_path.flags)
+        l = ('-l' in self.flags_path.flags)
         base = base or self.flags_path.path
         _indent = ' ' * indent
         for item in self.final_files_info:
@@ -162,12 +163,12 @@ class Printing:
             else:
                 folder_name, sub_folder = item
                 _full = os.path.join(base, folder_name)
-                line = f'{Fore.BLUE + folder_name}'
+                line = f'{Fore.BLUE + folder_name}{Style.RESET_ALL}'
                 if l:
                     print(f'{_indent}{line}{self._files_details(_full)}')
                 else:
                     print(f'{_indent}{line}')
-                Printing(self.flags_path, sub_folder).final_printing_indent(os.path.join(base, sub_folder), indent + 4)
+                Printing(self.flags_path, sub_folder).final_printing_indent(os.path.join(base, folder_name), indent + 4)
 
     def final_printing_regaler(self, base='.', end=' '):
         base = base or self.flags_path.path
