@@ -21,7 +21,7 @@ def without_hidden_files(filepath):#this function prints only visible files
 
 class Flags(Enum):
     -a = 'hidden files'
-    -r = 'recorsia'
+    -r = 'recursion'
     -l = 'details'
 
 
@@ -41,7 +41,7 @@ class CheckArgv:
         self.path =  self.path + self.argv[0]
         return self.path
 
-    def sintext_check_argv(self):
+    def syntext_check_argv(self):
         if not isinstance(self.argv, list):
             raise TypeError("argv must be a list")
         if not all(isinstance(a, str) for a in self.argv):
@@ -51,7 +51,7 @@ class CheckArgv:
     def check_argv(self):
         for arg in self.argv:
             if self.argv.count(arg) > 1:
-                raise TypeError(f"Flag {arg} was sended more than once: ")
+                raise TypeError(f"Flag {arg} was sent more than once: ")
         for arg in self.argv:
             if len(arg) < 2:
                 raise TypeError("Flag is too short ")
@@ -73,17 +73,12 @@ class CheckArgv:
 
 
     def call_all_func(self):
-        self.sintext_check_argv()
+        self.syntext_check_argv()
         self.check_argv()
         self.split_argv()
         return FlagsPath(self._path(), self.list_flags())
 
 
-
-
-flags =  Flags
-check = CheckArgv(sys.argv)
-_checked_items = check.call_all_func()
 
 
 class FilesInfo:
@@ -163,8 +158,6 @@ class FilesInfo:
             lst2 = self._subfiles(lst)
             return self._files_details(lst2)
 
-info = FilesInfo(_checked_items)
-files_info = info.return_according_flags()
 
 class Printing:
     def __init__(self,flags_path: FlagsPath, final_files_info: list):
@@ -200,4 +193,10 @@ class Printing:
 
 
 
+def main():
 
+    check = CheckArgv(sys.argv)
+    _checked_items = check.call_all_func()
+    info = FilesInfo(_checked_items)
+    files_info = info.return_according_flags()
+    Printing(_checked_items, files_info)
