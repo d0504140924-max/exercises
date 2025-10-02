@@ -8,18 +8,15 @@ from colorama import Fore, Style
 import stat
 
 
-def os_listing(path):
-    return os.listdir(path)
-
 FILE_ATTRIBUTE_HIDDEN = 0x2
 FILE_ATTRIBUTE_READONLY = 0x1
 FILE_ATTRIBUTE_SYSTEM   = 0x4
 
 
 class Flags(Enum):
-    -a = 'hidden files'
-    -r = 'recursion'
-    -l = 'details'
+    a = 'hidden files'
+    r = 'recursion'
+    l = 'details'
 
 
 @dataclass
@@ -35,7 +32,11 @@ class CheckArgv:
         self.path = ''
 
     def _path(self):
-        self.path =  self.path + self.argv[0]
+        for a in self.argv:
+            if not a.startswith('-'):
+                self.path = a
+                return self.path
+        self.path = '.'
         return self.path
 
     def syntext_check_argv(self):
@@ -50,13 +51,15 @@ class CheckArgv:
             if self.argv.count(arg) > 1:
                 raise TypeError(f"Flag {arg} was sent more than once: ")
         for arg in self.argv:
-            if len(arg) < 2:
+            if len(arg) < 2 and arg.startswith('-'):
                 raise TypeError("Flag is too short ")
-        if not (i for i in self.argv) in Flags:
-            raise TypeError("at least one flag is invalid")
+        for arg in self.argv:
+            if  arg.startswith('-') and  arg not in Flags:
+                raise TypeError("at least one flag is invalid")
 
 
     def split_argv(self):
+        self.new_argv = []
         for arg in self.argv:
             if arg.startswith("-"):
                 if len(arg) == 2:
@@ -71,9 +74,10 @@ class CheckArgv:
 
     def call_all_func(self):
         self.syntext_check_argv()
+        self._path()
         self.check_argv()
         self.split_argv()
-        return FlagsPath(self._path(), self.list_flags())
+        return FlagsPath(self.path, self.list_flags())
 
 
 
@@ -84,6 +88,9 @@ class FilesInfo:
         self.flags_path = flags_path
         self.subfiles = []
         self.files_details = []
+    @staticmethod
+    def os_listing(path):
+        return os.listdir(path)
 
     def visible_files(self):
         visible = []
@@ -91,69 +98,36 @@ class FilesInfo:
             full_path = os.path.join(self.flags_path.path, name)
             attrs = ctypes.windll.kernel32.GetFileAttributesW(str(full_path))
             if attrs != -1 and not (attrs & FILE_ATTRIBUTE_HIDDEN):
-                visible.append(full_path)
+                visible.append(name)
         return visible
 
     def also_hidden_files(self):
-        return os_listing(self.flags_path.path)
+        return self.os_listing(self.flags_path.path)
 
 
-    def _subfiles(self, list_of_files: list, base='.'):
+    def _subfiles(self, list_of_files: list, base=None):
+        base = base or self.flags_path.path
         items = []
         for name in list_of_files:
             full_path = os.path.join(base, name)
             if os.path.isdir(full_path):
-                sub = self._subfiles(os_listing(full_path), full_path)
+                sub = self._subfiles(self.os_listing(full_path), full_path)
                 items.append([name, sub])
             else:
                 items.append(name)
         return items
 
-    def _files_details(self, list_of_files, base='.'):
-
-        for name in list_of_files:
-            details = []
-            full_path = os.path.join(base, name)
-            if name is not str:
-                self._files_details(name)
-            else:
-                st = os.stat(full_path)
-                dt = time.localtime(st.st_mtime)
-                date_s = time.strftime("%d/%m/%Y", dt)
-                time_s = time.strftime("%H:%M", dt)
-                size = st.st_size
-                perm = stat.filemode(st.st_mode)
-                details.append([full_path, size, date_s, time_s, perm, name])
-        return details
 
     def return_according_flags(self):
         a = ('-a' in self.flags_path.flags)
         r = ('-r' in self.flags_path.flags)
-        l = ('-l' in self.flags_path.flags)
-        if not a and not r and not l:
-            return self.visible_files()
-        elif a and not r and not l :
-            return self.also_hidden_files()
-        elif r and not a and not l:
-            lst = self.visible_files()
-            return self._subfiles(lst)
-        elif l and not a and not r:
-            lst = self.visible_files()
-            return self._files_details(lst)
-        elif a and r and not l:
-            lst = self.also_hidden_files()
-            return self._files_details(lst)
-        elif a and l and not r:
-            lst = self.also_hidden_files()
-            return self._files_details(lst)
-        elif r and l and not a:
-            lst = self.visible_files()
-            lst2 = self._subfiles(lst)
-            return self._files_details(lst2)
-        elif a and r and l:
-            lst = self.also_hidden_files()
-            lst2 = self._subfiles(lst)
-            return self._files_details(lst2)
+
+
+        base_list = self.also_hidden_files() if a else self.visible_files()
+        if r:
+            return self._files_details(base_list)
+        else:
+            return base_list
 
 
 class Printing:
@@ -161,40 +135,68 @@ class Printing:
         self.final_files_info = final_files_info
         self.flags_path = flags_path
 
-    def final_printing_indent(self, base='.'):
+    def _files_details(self, path_file):
+        st = os.stat(path_file)
+        dt = time.localtime(st.st_mtime)
+        date_s = time.strftime("%d/%m/%Y", dt)
+        time_s = time.strftime("%H:%M", dt)
+        size_s = f"{st.st_size:,}"
+        perm = stat.filemode(st.st_mode)
+        return f'[{size_s:>8} | {date_s} {time_s} | {perm}]'
+
+    def final_printing_indent(self, base=None, indent=1):
+        l = ('l' in self.flags_path.flags)
+        base = base or self.flags_path.path
+        _indent = ' ' * indent
         for item in self.final_files_info:
-            if item is str:
-                if os.path.isdir(item):
-                    print(f"{Fore.BLUE + item}\n\t")
+            if isinstance(item ,str):
+                full = os.path.join(base, item)
+                if os.path.isdir(full):
+                    line = f"{Fore.BLUE}{item}{Style.RESET_ALL}"
                 else:
-                    print(Style.RESET_ALL + item)
+                    line = f'{Style.RESET_ALL}{item}'
+                if l:
+                    print(f'{_indent}{line}{self._files_details(full)}')
+                else:
+                    print(f'{_indent}{line}')
             else:
-                self.final_printing_indent('.')
+                folder_name, sub_folder = item
+                _full = os.path.join(base, folder_name)
+                line = f'{Fore.BLUE + folder_name}'
+                if l:
+                    print(f'{_indent}{line}{self._files_details(_full)}')
+                else:
+                    print(f'{_indent}{line}')
+                Printing(self.flags_path, sub_folder).final_printing_indent(os.path.join(base, sub_folder), indent + 4)
 
     def final_printing_regaler(self, base='.', end=' '):
+        base = base or self.flags_path.path
+        l = ('-l' in self.flags_path.flags)
         for item in self.final_files_info:
-            if item is str:
-                if os.path.isdir(item):
-                    print(f"{Fore.BLUE + item}", end=end)
-                else:
-                    print(Style.RESET_ALL + item, end=end)
+            foll_path = os.path.join(base, item)
+            if os.path.isdir(os.path.join(base,item)):
+                line = f'{Fore.BLUE}{item}{Style.RESET_ALL}'
             else:
-                self.final_printing_regaler('.',' ')
+                line  = f'{Style.RESET_ALL}{item}'
+            if l:
+                print(f'{line} {self._files_details(foll_path)}')
+            else:
+                print(line, end=' ')
 
     def printing(self):
-        a = ('-a' in self.flags_path.flags)
-        if a:
-            self.final_printing_indent()
+        r = ('-r' in self.flags_path.flags)
+        if r:
+            self.final_printing_indent(self.flags_path.path)
         else:
-            self.final_printing_regaler()
+            self.final_printing_regaler(self.flags_path.path)
 
 
 
 def main():
-    check = CheckArgv(sys.argv)
+    check = CheckArgv(sys.argv[1:])
     _checked_items = check.call_all_func()
     info = FilesInfo(_checked_items)
     files_info = info.return_according_flags()
-    Printing(_checked_items, files_info)
+    Printing(_checked_items, files_info).printing()
 if __name__ == '__main__':
     main()
