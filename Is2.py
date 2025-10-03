@@ -23,82 +23,85 @@ class FlagsPath:
     path: str=None
     flags: list[str]=None
     another_path: str=None
-current_path_flags: FlagsPath = None
+
 @dataclass
 class Information:
     info: Optional[list]  = None
     directory: Optional[str] = None
-current_info: Information = None
 
 
+current_info: Information=None
+current_path_flags: FlagsPath = None
 
 
 class CheckArgv:
-    def __init__(self, argv):
-        self.argv = argv
 
-        self.path = ''
 
-    def _path(self):
-        for arg in self.argv:
+    @staticmethod
+    def _path(argv: list) -> str:
+        for arg in argv:
             if not arg.startswith('-'):
-                self.path = self.argv
-                return self.path
-        self.path = '.'
-        return self.path
+                __path = arg
+                return __path
+        __path = '.'
+        return __path
 
-    def get_another_path(self):
-        for arg in reversed(self.argv):
+    @staticmethod
+    def get_another_path(argv: list) -> Optional[str]:
+        for arg in reversed(argv):
             if not arg.startswith('-'):
-                specific_file = self.argv[-1]
+                specific_file = argv[-1]
                 return specific_file
         return os.getcwd()
 
 
-    def syntext_check_argv(self):
-        if not isinstance(self.argv, list):
+    @staticmethod
+    def syntext_check_argv(argv: list):
+        if not isinstance(argv, list):
             raise TypeError("argv must be a list")
-        if not all(isinstance(a, str) for a in self.argv):
+        if not all(isinstance(a, str) for a in argv):
             raise TypeError("all argv items must be strings")
 
 
-    def check_argv(self):
-        for arg in self.argv:
-            if self.argv.count(arg) > 1:
+    @staticmethod
+    def check_argv(argv: list):
+        for arg in argv:
+            if argv.count(arg) > 1:
                 raise TypeError(f"Flag {arg} was sent more than once: ")
-        for arg in self.argv:
+        for arg in argv:
             if len(arg) < 2 and arg.startswith('-'):
                 raise TypeError("Flag is too short ")
 
 
-
-    def split_argv(self):
+    @staticmethod
+    def split_argv(argv: list):
         new_argv = []
-        for arg in self.argv:
+        for arg in argv:
             if arg.startswith("-"):
                 if len(arg) == 2:
                     new_argv.append(arg)
                 else:
                     new_argv.extend([f'-{i}' for i in arg[1:]])
-        self.argv = new_argv
-        for arg in self.argv:
+        argv = new_argv
+        for arg in argv:
             if arg.startswith('-') and arg not in valid_flags:
                 raise TypeError("at least one flag is invalid")
             if '-d' in valid_flags and ('r' in valid_flags or 'l' in valid_flags or 'a' in valid_flags):
                 raise TypeError("you entered tow conflicting flags")
         return new_argv
 
-    def list_flags(self):
-        return self.argv
+    @staticmethod
+    def list_flags(argv: list):
+        return argv
 
 
-    def call_all_func(self):
-        self.syntext_check_argv()
-        self._path()
-        self.get_another_path()
-        self.check_argv()
-        self.split_argv()
-        return FlagsPath(self.path, self.split_argv(), self.get_another_path())
+    def call_all_func(self , argv: list):
+        self.syntext_check_argv(argv)
+        self._path(argv)
+        self.get_another_path(argv)
+        self.check_argv(argv)
+        self.split_argv(argv)
+        return FlagsPath(self._path(argv), self.split_argv(argv), self.get_another_path(argv))
 
 
 
@@ -218,8 +221,8 @@ class Printing:
 
 def main():
     global current_path_flags, current_info
-    check = CheckArgv(sys.argv[1:])
-    current_path_flags = check.call_all_func()
+    check = CheckArgv()
+    current_path_flags = check.call_all_func(sys.argv[1:])
     info = FilesInfo()
     current_info = info.return_according_flags()
     Printing().printing()
