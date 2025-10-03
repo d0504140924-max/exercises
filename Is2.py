@@ -3,41 +3,57 @@ import sys
 import ctypes
 import time
 from dataclasses import dataclass
-from enum import Enum
+from typing import Optional
+
 from colorama import Fore, Style
 import stat
-
+from pathlib import Path
 
 FILE_ATTRIBUTE_HIDDEN = 0x2
 FILE_ATTRIBUTE_READONLY = 0x1
 FILE_ATTRIBUTE_SYSTEM   = 0x4
 
 
-class Flags(Enum):
-    a = 'hidden files'
-    r = 'recursion'
-    l = 'details'
+
+valid_flags = {'-a', '-r', '-l', '-d'}
 
 
 @dataclass
 class FlagsPath:
-    path: str
-    flags: list[str]
+    path: str=None
+    flags: list[str]=None
+    another_path: str=None
+current_path_flags: FlagsPath = None
+@dataclass
+class Information:
+    info: Optional[list]  = None
+    directory: Optional[str] = None
+current_info: Information = None
+
+
 
 
 class CheckArgv:
     def __init__(self, argv):
         self.argv = argv
-        self.new_argv = []
+
         self.path = ''
 
     def _path(self):
-        for a in self.argv:
-            if not a.startswith('-'):
-                self.path = a
+        for arg in self.argv:
+            if not arg.startswith('-'):
+                self.path = self.argv
                 return self.path
         self.path = '.'
         return self.path
+
+    def get_another_path(self):
+        for arg in reversed(self.argv):
+            if not arg.startswith('-'):
+                specific_file = self.argv[-1]
+                return specific_file
+        return os.getcwd()
+
 
     def syntext_check_argv(self):
         if not isinstance(self.argv, list):
@@ -57,57 +73,58 @@ class CheckArgv:
 
 
     def split_argv(self):
-        self.new_argv = []
+        new_argv = []
         for arg in self.argv:
             if arg.startswith("-"):
                 if len(arg) == 2:
-                    self.new_argv.append(arg)
+                    new_argv.append(arg)
                 else:
-                    self.new_argv.extend([f'-{i}' for i in arg[1:]])
-        self.argv = self.new_argv
-        #for arg in self.new_argv:
-            #if arg.startswith('-') and arg not in Flags:
-                #raise TypeError("at least one flag is invalid")
+                    new_argv.extend([f'-{i}' for i in arg[1:]])
+        self.argv = new_argv
+        for arg in self.argv:
+            if arg.startswith('-') and arg not in valid_flags:
+                raise TypeError("at least one flag is invalid")
+            if '-d' in valid_flags and ('r' in valid_flags or 'l' in valid_flags or 'a' in valid_flags):
+                raise TypeError("you entered tow conflicting flags")
+        return new_argv
 
     def list_flags(self):
-        return self.new_argv
+        return self.argv
 
 
     def call_all_func(self):
         self.syntext_check_argv()
         self._path()
+        self.get_another_path()
         self.check_argv()
         self.split_argv()
-        return FlagsPath(self.path, self.list_flags())
+        return FlagsPath(self.path, self.split_argv(), self.get_another_path())
 
 
 
 
 class FilesInfo:
-    def __init__(self, flags_path: FlagsPath):
-
-        self.flags_path = flags_path
-        self.subfiles = []
-        self.files_details = []
     @staticmethod
     def os_listing(path):
         return os.listdir(path)
 
-    def visible_files(self):
+    @staticmethod
+    def visible_files():
         visible = []
-        for name in os.listdir(self.flags_path.path):
-            full_path = os.path.join(self.flags_path.path, name)
+        for name in os.listdir(current_path_flags.path):
+            full_path = os.path.join(current_path_flags.path, name)
             attrs = ctypes.windll.kernel32.GetFileAttributesW(str(full_path))
             if attrs != -1 and not (attrs & FILE_ATTRIBUTE_HIDDEN):
                 visible.append(name)
         return visible
 
+
     def also_hidden_files(self):
-        return self.os_listing(self.flags_path.path)
+        return self.os_listing(current_path_flags.path)
 
 
     def _subfiles(self, list_of_files: list, base=None):
-        base = base or self.flags_path.path
+        base = base or current_path_flags.path
         items = []
         for name in list_of_files:
             full_path = os.path.join(base, name)
@@ -120,36 +137,36 @@ class FilesInfo:
 
 
     def return_according_flags(self):
-        a = ('-a' in self.flags_path.flags)
-        r = ('-r' in self.flags_path.flags)
-
-
-        base_list = self.also_hidden_files() if a else self.visible_files()
-        if r:
-            return self._subfiles(base_list)
+        a = ('-a' in current_path_flags.flags)
+        r = ('-r' in current_path_flags.flags)
+        d = ('-d' in current_path_flags.flags)
+        if not d:
+            base_list = self.also_hidden_files() if a else self.visible_files()
+            if r:
+                return Information(info=self._subfiles(base_list))
+            else:
+                return Information(info=base_list)
         else:
-            return base_list
+            return Information(directory=current_path_flags.another_path)
 
 
 class Printing:
-    def __init__(self,flags_path: FlagsPath, final_files_info: list):
-        self.final_files_info = final_files_info
-        self.flags_path = flags_path
 
-    def _files_details(self, path_file):
+    @staticmethod
+    def _files_details(path_file):
         st = os.stat(path_file)
         dt = time.localtime(st.st_mtime)
         date_s = time.strftime("%d/%m/%Y", dt)
         time_s = time.strftime("%H:%M", dt)
         size_s = f"{st.st_size:,}"
         perm = stat.filemode(st.st_mode)
-        return f'[{size_s:>8} | {date_s} {time_s} | {perm}]'
+        return f'[{date_s} {time_s} | {perm}]'
 
     def final_printing_indent(self, base=None, indent=1):
-        l = ('-l' in self.flags_path.flags)
-        base = base or self.flags_path.path
+        l = ('-l' in current_path_flags.flags)
+        base = base or current_path_flags.path
         _indent = ' ' * indent
-        for item in self.final_files_info:
+        for item in current_info.info:
             if isinstance(item ,str):
                 full = os.path.join(base, item)
                 if os.path.isdir(full):
@@ -168,12 +185,12 @@ class Printing:
                     print(f'{_indent}{line}{self._files_details(_full)}')
                 else:
                     print(f'{_indent}{line}')
-                Printing(self.flags_path, sub_folder).final_printing_indent(os.path.join(base, folder_name), indent + 4)
+                Printing().final_printing_indent(os.path.join(base, folder_name), indent + 4)
 
     def final_printing_regaler(self, base='.', end=' '):
-        base = base or self.flags_path.path
-        l = ('-l' in self.flags_path.flags)
-        for item in self.final_files_info:
+        base = base or current_path_flags.path
+        l = ('-l' in current_path_flags.flags)
+        for item in current_info.info:
             foll_path = os.path.join(base, item)
             if os.path.isdir(os.path.join(base,item)):
                 line = f'{Fore.BLUE}{item}{Style.RESET_ALL}'
@@ -185,19 +202,26 @@ class Printing:
                 print(line, end=' ')
 
     def printing(self):
-        r = ('-r' in self.flags_path.flags)
-        if r:
-            self.final_printing_indent(self.flags_path.path)
+        d = ('-d' in current_path_flags.flags)
+        r = ('-r' in current_path_flags.flags)
+        if not d:
+            if r:
+                self.final_printing_indent(current_path_flags.path)
+            else:
+                self.final_printing_regaler(current_path_flags.path)
         else:
-            self.final_printing_regaler(self.flags_path.path)
-
+            filename_without_ext = os.path.splitext(os.path.basename(current_info.directory))[0]
+            path = Path(current_info.directory)
+            filename = path.name
+            print(f'{filename_without_ext} {self._files_details(current_info.directory)}')
 
 
 def main():
+    global current_path_flags, current_info
     check = CheckArgv(sys.argv[1:])
-    _checked_items = check.call_all_func()
-    info = FilesInfo(_checked_items)
-    files_info = info.return_according_flags()
-    Printing(_checked_items, files_info).printing()
+    current_path_flags = check.call_all_func()
+    info = FilesInfo()
+    current_info = info.return_according_flags()
+    Printing().printing()
 if __name__ == '__main__':
     main()
