@@ -12,8 +12,11 @@ class Argv:
 
     @staticmethod
     def get_folder_name(argv: list):
-        if len(argv) > 1 and argv[1].is_dir():
-            return argv[1]
+        if len(argv) > 1:
+            if argv[-1].is_dir():
+                return argv[-1]
+            else:
+                raise ValueError(f'invalid path {argv[-1]}')
         return str(Path.cwd())
 
     def parse_argv(self, argv: list):
@@ -41,10 +44,10 @@ class Printing:
 
 
 def main(argv: list):
-    args = Argv(argv)
+    args = Argv()
     info = InfoProvide()
     printing = Printing()
-    _args = args.parse_argv()
+    _args = args.parse_argv(argv)
     _info = info.provide_names(_args)
     printing._print(_info)
 
