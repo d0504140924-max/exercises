@@ -124,10 +124,9 @@ class FilesInfo:
 
     @staticmethod
     def _filtering(path, base='.'):
-        full_path = os.path.join(base, path)
-        _filename = os.path.splitext(os.path.basename(full_path))[0]
         all_files = os.listdir(path)
         for file in all_files:
+            _filename = os.path.splitext(os.path.basename(file))[0]
             if _filename :
 
 
