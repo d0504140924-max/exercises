@@ -11,11 +11,13 @@ class Args:
 class Argv:
 
     @staticmethod
-    def get_folder_name():
+    def get_folder_name(argv: list):
+        if len(argv) > 1 and argv[1].is_dir():
+            return argv[1]
         return str(Path.cwd())
 
-    def parse_argv(self):
-        return Args(path=self.get_folder_name())
+    def parse_argv(self, argv: list):
+        return Args(path=self.get_folder_name(argv))
 
 class InfoProvide:
 
@@ -29,22 +31,22 @@ class InfoProvide:
 class Printing:
 
     @staticmethod
-    def _print(list_names):
+    def print_inline(list_names):
         for f in list_names:
             print(f, end=' ')
 
-    def print_inline(self, info):
-        return self._print(info)
+    def _print(self, info):
+        return self.print_inline(info)
 
 
 
 def main(argv: list):
-    args = Argv()
+    args = Argv(argv)
     info = InfoProvide()
     printing = Printing()
     _args = args.parse_argv()
     _info = info.provide_names(_args)
-    printing.print_inline(_info)
+    printing._print(_info)
 
 if __name__ == '__main__':
     main(sys.argv)
