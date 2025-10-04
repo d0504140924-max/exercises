@@ -15,7 +15,7 @@ FILE_ATTRIBUTE_SYSTEM   = 0x4
 
 
 
-valid_flags = {'-a', '-r', '-l', '-d'}
+valid_flags = {'-a', '-r', '-l', '-d', '-s'}
 
 
 @dataclass
@@ -86,8 +86,8 @@ class CheckArgv:
         for arg in argv:
             if arg.startswith('-') and arg not in valid_flags:
                 raise TypeError("at least one flag is invalid")
-            if '-d' in valid_flags and ('r' in valid_flags or 'l' in valid_flags or 'a' in valid_flags):
-                raise TypeError("you entered tow conflicting flags")
+        if ('-d' in argv or '-s' in argv) and ('-r' in argv or '-l' in argv or '-a' in argv):
+            raise TypeError("you entered tow conflicting flags")
         return new_argv
 
     @staticmethod
@@ -120,6 +120,15 @@ class FilesInfo:
             if attrs != -1 and not (attrs & FILE_ATTRIBUTE_HIDDEN):
                 visible.append(name)
         return visible
+
+
+    @staticmethod
+    def _filtering(path, base='.'):
+        full_path = os.path.join(base, path)
+        _filename = os.path.splitext(os.path.basename(full_path))[0]
+        all_files = os.listdir(path)
+        for file in all_files:
+            if _filename :
 
 
     def also_hidden_files(self):
@@ -165,11 +174,11 @@ class Printing:
         perm = stat.filemode(st.st_mode)
         return f'[{date_s} {time_s} | {perm}]'
 
-    def final_printing_indent(self, base=None, indent=1):
+    def final_printing_indent(self, list_flags, base=None, indent=1):
         l = ('-l' in current_path_flags.flags)
         base = base or current_path_flags.path
         _indent = ' ' * indent
-        for item in current_info.info:
+        for item in list_flags:
             if isinstance(item ,str):
                 full = os.path.join(base, item)
                 if os.path.isdir(full):
@@ -188,7 +197,7 @@ class Printing:
                     print(f'{_indent}{line}{self._files_details(_full)}')
                 else:
                     print(f'{_indent}{line}')
-                Printing().final_printing_indent(os.path.join(base, folder_name), indent + 4)
+                Printing().final_printing_indent(sub_folder, os.path.join(base, folder_name), indent + 4)
 
     def final_printing_regaler(self, base='.', end=' '):
         base = base or current_path_flags.path
@@ -209,13 +218,11 @@ class Printing:
         r = ('-r' in current_path_flags.flags)
         if not d:
             if r:
-                self.final_printing_indent(current_path_flags.path)
+                self.final_printing_indent(current_info.info, current_path_flags.path)
             else:
                 self.final_printing_regaler(current_path_flags.path)
         else:
             filename_without_ext = os.path.splitext(os.path.basename(current_info.directory))[0]
-            path = Path(current_info.directory)
-            filename = path.name
             print(f'{filename_without_ext} {self._files_details(current_info.directory)}')
 
 
