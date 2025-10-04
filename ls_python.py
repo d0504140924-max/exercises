@@ -26,50 +26,52 @@ class Argv:
     def valid_flags(flag: str):
         return flag in Flags.__members__
 
-    @staticmethod
-    def get_double_dash_flags(args: list):
-        return list(filter(lambda flag: flag.startswith('--'), args))
 
-    @staticmethod
-    def get_one_dash_flags(args: list):
+    def get_double_dash_flags(self, args: list):
+        valid_flags = []
+        input_flags =  list(filter(lambda flag: flag.startswith('--'), args))
+        for flag in input_flags:
+            if not self.valid_flags(flag)
+                raise ValueError(f'Invalid flag: {flag}')
+            else:
+                valid_flags.append(flag)
+        return valid_flags
+
+    def get_one_dash_flags(self, args: list):
         double_dash_flags = []
         double_dash = list(filter(lambda flag: flag.startswith('-'), args))
         for flag in double_dash:
             _flag = (l for l in flag if not l == '-')
-            double_dash_flags.append(_flag)
+            for letter in _flag:
+                if not self.valid_flags(letter)
+                    raise ValueError(f'Invalid flag: {letter}')
+                else:
+                    double_dash_flags.append(letter)
         return double_dash_flags
 
 
-    def get_folder_name(self, argv: list):
-        if len(argv) > 1 and not argv[-1].startswith("-"):
-            if not self.valid_path(argv[-1]):
-                raise ValueError(f'invalid path {argv[-1]}')
-            else:
-                return argv[-1]
-        return str(Path.cwd())
+    def get_folder_name(self, path: str):
+        if not self.valid_path(path):
+            raise ValueError(f'invalid path {path}')
+        else:
+            return path
+
 
 
     def get_flags(self, argv: list):
-        current_flags = []
-        one_dash = self.get_one_dash_flags(argv)
-        for i in one_dash:
-            for letter in i:
-                if lettre.isalpha():
-                    if self.valid_flags(letter):
-                        current_flags.append(Flags[letter])
-                    else:
-                        raise ValueError(f'invalid flag {letter}')
+        current_flags = self.get_one_dash_flags(argv)
         double_dash = self.get_double_dash_flags(argv)
         for flag in double_dash:
-            if flag in Flags.__members__:
-                current_flags.append(Flags[flag])
-            else:
-                raise ValueError(f'invalid flag {flag}')
+            current_flags.append(flag)
         return current_flags
 
 
     def parse_argv(self, argv: list):
-        argv1 = Args(path=self.get_folder_name(argv), flags=self.get_flags(argv))
+        if len(argv) > 1 and not argv[-1].startswith("-"):
+            path = get_folder_name(argv[-1])
+        else:
+            path = Path.cwd()
+        argv1 = Args(path=path, flags=self.get_flags(argv))
         return argv1
 
 class InfoProvide:
@@ -89,21 +91,17 @@ class InfoProvide:
         for name in os.listdir(path):
             full_path = os.path.join(path, name)
             attrs = ctypes.windll.kernel32.GetFileAttributesW(str(full_path))
-            if not attrs != -1 and not (attrs & FILE_ATTRIBUTE_HIDDEN):
+            if  attrs == -1 and not (attrs & FILE_ATTRIBUTE_HIDDEN):
                 visible.append(name)
         return hidden
 
 
     def provide_files(self, args: Args):
+        visibles = self.get_vision_files(args.path)
         if Flags.all in args.flags:
-            visibles = self.get_vision_files(args.path)
-            hidden = self.only_hidden(args.path)
-            for file in hidden:
-                visibles.append(file)
-            return visibles
+            visibles.extend(self.only_hidden(args.path))
+        return visibles
 
-        else:
-            return self.get_vision_files(args.path)
 
 class Printing:
 
