@@ -5,6 +5,9 @@ from pathlib import Path
 from enum import Enum
 import ctypes
 from colorama import Style, Fore
+import stat
+import time
+
 
 class Flags(Enum):
     all = 'hidden files'
@@ -13,6 +16,8 @@ class Flags(Enum):
     one = 'one in row'
     zero = 'end with space'
     size = 'size in bytes'
+    time = 'last time'
+    permission = 'permissions'
 
 
 @dataclass
@@ -62,6 +67,9 @@ class Argv:
                 raise ValueError(f'Invalid flag: {flag}')
             else:
                 valid_flags.append(Flags[flag])
+        if Flags.size in valid_flags or Flags.time in valid_flags or Flags.permission in valid_flags:
+            if not Flags.one in valid_flags:
+                valid_flags.append(Flags['one'])
         return valid_flags
 
     def get_one_dash_flags(self, args: list):
@@ -87,7 +95,6 @@ class Argv:
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
         current_flags.extend(self.default_flags.get_auto_flags(argv))
-        print(current_flags)
         return current_flags
 
 
@@ -130,14 +137,46 @@ class InfoProvide:
                 folders.append(name)
         return folders
 
+    @staticmethod
+    def get_size(path : str):
+        st = os.stat(path)
+        return f"{st.st_size:}"
 
-    def provide_files(self, args: Args):
-        visibles = self.get_vision_files(args.path)
+    @staticmethod
+    def get_time(path : str):
+        st = os.stat(path)
+        dt = time.localtime(st.st_mtime)
+        date_s = time.strftime("%d/%m/%Y", dt)
+        time_s = time.strftime("%H:%M", dt)
+        return f'[{date_s}, {time_s}]'
+
+    @staticmethod
+    def get_permission(path : str):
+        st = os.stat(path)
+        perm = stat.filemode(st.st_mode)
+        return f'{perm}'
+
+    def provide_files(self, args: Args)->list:
         if Flags.directory in args.flags:
-            return self.only_folders(args.path)
-        if Flags.all in args.flags:
-            visibles.extend(self.only_hidden(args.path))
-        return visibles
+            names =  self.only_folders(args.path)
+            if Flags.all in args.flags:
+                names.extend(self.only_hidden(args.path))
+        else:
+            names = self.get_vision_files(args.path)
+            if Flags.all in args.flags:
+                names.extend(self.only_hidden(args.path))
+        final_names = []
+        for name in names:
+            full_path = os.path.join(args.path, name)
+            _name = name
+            if Flags.size in args.flags:
+                _name += f'. size= {self.get_size(full_path)}'
+            if Flags.time in args.flags:
+                _name += f'. time= {self.get_time(full_path)}'
+            if Flags.permission in args.flags:
+                _name += f'. perm= {self.get_permission(full_path)}'
+            final_names.append([name, _name])
+        return final_names
 
 
 class Printing:
@@ -152,11 +191,11 @@ class Printing:
     def paint_folders(list_names, base='.'):
         painted = []
         for f in list_names:
-            full_path = os.path.join(base, f)
+            full_path = os.path.join(base, f[0])
             if os.path.isdir(full_path):
-                painted += [f'{Fore.BLUE}{f}{Style.RESET_ALL} ']
+                painted += [f'{Fore.BLUE}{f[1]}{Style.RESET_ALL} ']
             else:
-                    painted += [f'{Fore.LIGHTWHITE_EX}{f}{Style.RESET_ALL} ']
+                    painted += [f'{Fore.LIGHTWHITE_EX}{f[1]}{Style.RESET_ALL} ']
         return painted
 
 
@@ -168,7 +207,7 @@ class Printing:
             return ' '
 
 
-    def _print(self,args: Args, info):
+    def _print(self,args: Args, info: list):
         end_format = self.format_row(args)
         if Flags.color in args.flags:
             painted = self.paint_folders(info, base=args.path)

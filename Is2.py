@@ -169,7 +169,7 @@ class Printing:
         dt = time.localtime(st.st_mtime)
         date_s = time.strftime("%d/%m/%Y", dt)
         time_s = time.strftime("%H:%M", dt)
-        size_s = f"{st.st_size:,}"
+        size_s =
         perm = stat.filemode(st.st_mode)
         return f'[{date_s} {time_s} | {perm}]'
 
