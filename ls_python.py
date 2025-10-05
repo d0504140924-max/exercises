@@ -19,6 +19,29 @@ class Args:
     path: str
     flags: list[Flags]
 
+class AutoFlags:
+
+    @staticmethod
+    def default_flags():
+        return [Flags.color, Flags.zero]
+
+    def add_and_check_default(self, flags: list[Flags]):
+        default_flags = self.default_flags()
+        for flag in default_flags:
+            if Flags.zero == flag and Flags.one in flags:
+                default_flags.remove(Flags.zero)
+            for f in default_flags:
+                if not f in flags:
+                    flags.append(flag)
+        return flags
+
+
+    def final_flags(self, flags: list[Flags]):
+        return  self.add_and_check_default(flags)
+
+auto_flags = AutoFlags()
+
+
 FILE_ATTRIBUTE_HIDDEN = 0x2
 
 class Argv:
@@ -65,6 +88,8 @@ class Argv:
     def get_flags(self, argv: list):
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
+        current_flags.extend(auto_flags.final_flags(argv))
+        print(current_flags)
         return current_flags
 
 
@@ -75,29 +100,6 @@ class Argv:
             path = str(Path.cwd())
         argv1 = Args(path=path, flags=self.get_flags(argv))
         return argv1
-
-class AutoFlags:
-
-    @staticmethod
-    def default_flags():
-        return [Flags.color, Flags.zero]
-
-    def add_and_check_default(self, argv: Args):
-        flags = self.default_flags()
-        args = argv.flags
-        for flag in flags:
-            if Flags.zero == flag and Flags.one in argv.flags:
-                flags.remove(Flags.zero)
-            for f in flags:
-                if not f in args:
-                    args.append(flag)
-        return replace(argv, flags=flags)
-
-
-    def final_flags(self, argv: Args):
-        return  self.add_and_check_default(argv)
-
-
 
 
 class InfoProvide:
@@ -156,7 +158,7 @@ class Printing:
             if os.path.isdir(full_path):
                 painted += [f'{Fore.BLUE}{f}{Style.RESET_ALL} ']
             else:
-                    painted += [f'{Fore.LIGHTWHITE}{f}{Style.RESET_ALL} ']
+                    painted += [f'{Fore.LIGHTWHITE_EX}{f}{Style.RESET_ALL} ']
         return painted
 
 
@@ -169,10 +171,10 @@ class Printing:
         return end
 
 
-    def _print(self,args: Args, info):
+    def _print(self,args: Argv, info):
         if Flags.color in args.flags:
             painted = self.paint_folders(info, base=args.path)
-            return self.print_inline(painted, end=self.one_in_row(args))
+            return self.print_inline(painted, end=self.format_row(args))
         else:
             return self.print_inline(info, end=self.one_in_row(args))
 
@@ -180,11 +182,9 @@ class Printing:
 
 def main(argv: list):
     args = Argv()
-    default = AutoFlags()
     info = InfoProvide()
     printing = Printing()
-    original_args = args.parse_argv(argv)
-    _args = default.final_flags(original_args)
+    _args = args.parse_argv(argv)
     _info = info.provide_files(_args)
     printing._print(_args, _info)
 
