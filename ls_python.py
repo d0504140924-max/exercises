@@ -87,6 +87,7 @@ class Argv:
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
         current_flags.extend(self.default_flags.get_auto_flags(argv))
+        print(current_flags)
         return current_flags
 
 
