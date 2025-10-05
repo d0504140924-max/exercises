@@ -25,16 +25,16 @@ class AutoFlags:
     def default_flags():
         return [Flags.color, Flags.zero]
 
-    def check_default(self, flags: list[Flags]):
-        default_flags = self.default_flags()
-        for flag in default_flags:
-            if Flags.zero == flag and Flags.one in flags:
-                return True
+    @staticmethod
+    def check_conflicting_flags(flag: Flags, flags: list[Flags]):
+        if flag == Flags.zero and Flags.one in flags:
+            return True
 
 
     def get_auto_flags(self, flags: list[Flags]):
-        auto_flags = list(filter(lambda flag: self.check_default(flags), self.default_flags()))
-        return flags + auto_flags
+        default_flags = self.default_flags()
+        auto_flags = list(filter(lambda flag: not self.check_conflicting_flags(flag, flags), default_flags))
+        return set(flags + auto_flags)
 
 
 FILE_ATTRIBUTE_HIDDEN = 0x2
