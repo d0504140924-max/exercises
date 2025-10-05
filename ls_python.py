@@ -12,6 +12,7 @@ class Flags(Enum):
     directory = 'only folders'
     one = 'one in row'
     zero = 'end with space'
+    size = 'size in bytes'
 
 
 @dataclass
@@ -29,7 +30,7 @@ class AutoFlags:
     def check_conflicting_flags(flag: Flags, flags: list[Flags]):
         if flag == Flags.zero and Flags.one in flags:
             return True
-
+        return False
 
     def get_auto_flags(self, flags: list[Flags]):
         default_flags = self.default_flags()
@@ -85,8 +86,7 @@ class Argv:
     def get_flags(self, argv: list):
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
-        current_flags.extend(self.default_flags.final_flags(argv))
-        print(current_flags)
+        current_flags.extend(self.default_flags.get_auto_flags(argv))
         return current_flags
 
 
@@ -162,8 +162,9 @@ class Printing:
     @staticmethod
     def format_row(args: Args):
         if Flags.one in args.flags:
-            end = '\n'
-        return end
+            return '\n'
+        else:
+            return ' '
 
 
     def _print(self,args: Args, info):
