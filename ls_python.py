@@ -25,26 +25,23 @@ class AutoFlags:
     def default_flags():
         return [Flags.color, Flags.zero]
 
-    def add_and_check_default(self, flags: list[Flags]):
+    def check_default(self, flags: list[Flags]):
         default_flags = self.default_flags()
         for flag in default_flags:
             if Flags.zero == flag and Flags.one in flags:
-                default_flags.remove(Flags.zero)
-            for f in default_flags:
-                if not f in flags:
-                    flags.append(flag)
-        return flags
+                return True
 
 
-    def final_flags(self, flags: list[Flags]):
-        return  self.add_and_check_default(flags)
-
-auto_flags = AutoFlags()
+    def get_auto_flags(self, flags: list[Flags]):
+        auto_flags = list(filter(lambda flag: self.check_default(flags), self.default_flags()))
+        return flags + auto_flags
 
 
 FILE_ATTRIBUTE_HIDDEN = 0x2
 
 class Argv:
+    def __init__(self, default_flags: AutoFlags):
+        self.default_flags = default_flags
 
     @staticmethod
     def valid_path(path: str):
@@ -88,7 +85,7 @@ class Argv:
     def get_flags(self, argv: list):
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
-        current_flags.extend(auto_flags.final_flags(argv))
+        current_flags.extend(self.default_flags.final_flags(argv))
         print(current_flags)
         return current_flags
 
@@ -163,25 +160,25 @@ class Printing:
 
 
     @staticmethod
-    def format_row(args: Argv):
+    def format_row(args: Args):
         if Flags.one in args.flags:
             end = '\n'
-        elif Flags.zero in args.flags:
-            end = ' '
         return end
 
 
-    def _print(self,args: Argv, info):
+    def _print(self,args: Args, info):
+        end_format = self.format_row(args)
         if Flags.color in args.flags:
             painted = self.paint_folders(info, base=args.path)
-            return self.print_inline(painted, end=self.format_row(args))
+            return self.print_inline(painted, end=end_format)
         else:
-            return self.print_inline(info, end=self.one_in_row(args))
+            return self.print_inline(info, end=end_format)
 
 
 
 def main(argv: list):
-    args = Argv()
+    auto_flags = AutoFlags()
+    args = Argv(auto_flags)
     info = InfoProvide()
     printing = Printing()
     _args = args.parse_argv(argv)
