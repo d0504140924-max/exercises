@@ -9,6 +9,7 @@ from colorama import Style, Fore
 class Flags(Enum):
     all = 'hidden files'
     color = 'colors'
+    directory = 'only folders'
 
 
 @dataclass
@@ -97,6 +98,8 @@ class InfoProvide:
 
     def provide_files(self, args: Args):
         visibles = self.get_vision_files(args.path)
+        if Flags.directory in args.flags:
+            visibles = [f for f in visibles if os.path.isdir(f)]
         if Flags.all in args.flags:
             visibles.extend(self.only_hidden(args.path))
         return visibles
@@ -118,7 +121,7 @@ class Printing:
             if os.path.isdir(full_path):
                 painted += [f'{Fore.BLUE}{f}{Style.RESET_ALL} ']
             else:
-                    painted += [f'{f} ']
+                    painted += [f'{Fore.LIGHTWHITE}{f}{Style.RESET_ALL} ']
         return painted
 
 
