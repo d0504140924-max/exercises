@@ -8,7 +8,7 @@ from colorama import Style, Fore
 
 class Flags(Enum):
     all = 'hidden files'
-    color = 'folder-Blue file-White'
+    color = 'colors'
 
 
 @dataclass
@@ -33,24 +33,24 @@ class Argv:
         valid_flags = []
         input_flags =  list(filter(lambda arg: arg.startswith('--'), args))
         for flag in input_flags:
-            _flag = flag[2:]
-            if not self.valid_flags(_flag):
-                raise ValueError(f'Invalid flag: {_flag}')
+            flag = flag.replace('-', '')
+            if not self.valid_flags(flag):
+                raise ValueError(f'Invalid flag: {flag}')
             else:
-                valid_flags.append(Flags[_flag])
+                valid_flags.append(Flags[flag])
         return valid_flags
 
     def get_one_dash_flags(self, args: list):
-        double_dash_flags = []
-        double_dash = list(filter(lambda arg: arg.startswith('-') and arg[1] != '-', args))
-        for flag in double_dash:
-            _flag = (l for l in flag if not l == '-')
-            for letter in _flag:
+        one_dash_flags = []
+        one_dash = list(filter(lambda arg: arg.startswith('-') and arg[1] != '-', args))
+        for flag in one_dash:
+            flag = flag.replace('-', '')
+            for letter in flag:
                 if not self.valid_flags(letter):
                     raise ValueError(f'Invalid flag: {letter}')
                 else:
-                    double_dash_flags.append(Flags[letter])
-        return double_dash_flags
+                    one_dash_flags.append(Flags[letter])
+        return one_dash_flags
 
 
     def get_folder_name(self, path: str):
@@ -105,23 +105,27 @@ class InfoProvide:
 class Printing:
 
     @staticmethod
-    def print_inline(list_names):
+    def print_inline(list_names: list, end=' '):
         for f in list_names:
-            print(f, end=' ')
+            print(f, end=end)
+
 
     @staticmethod
-    def print_colors(list_names, base='.',end='\n'):
+    def paint_folders(list_names, base='.'):
+        painted = []
         for f in list_names:
             full_path = os.path.join(base, f)
             if os.path.isdir(full_path):
-                print(f'{Fore.BLUE}{f}{Style.RESET_ALL}',end=' ' )
+                painted += [f'{Fore.BLUE}{f}{Style.RESET_ALL} ']
             else:
-                print(f, end=' ')
+                    painted += [f'f ']
+        return painted
 
 
     def _print(self,args: Args, info):
         if Flags.color in args.flags:
-            return self.print_colors(info, base=args.path)
+            painted = self.paint_folders(info, base=args.path)
+            return self.print_inline(painted)
         else:
             return self.print_inline(info)
 
