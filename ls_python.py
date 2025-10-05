@@ -118,7 +118,7 @@ class Printing:
             if os.path.isdir(full_path):
                 painted += [f'{Fore.BLUE}{f}{Style.RESET_ALL} ']
             else:
-                    painted += [f'f ']
+                    painted += [f'{f} ']
         return painted
 
 
