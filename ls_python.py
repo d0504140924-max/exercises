@@ -76,6 +76,30 @@ class Argv:
         argv1 = Args(path=path, flags=self.get_flags(argv))
         return argv1
 
+class AutoFlags:
+
+    @staticmethod
+    def default_flags():
+        return [Flags.color, Flags.zero]
+
+    def add_and_check_default(self, argv: Args):
+        flags = self.default_flags()
+        args = argv.flags
+        for flag in flags:
+            if Flags.zero == flag and Flags.one in argv.flags:
+                flags.remove(Flags.zero)
+            for f in flags:
+                if not f in args:
+                    args.append(flag)
+        return replace(argv, flags=flags)
+
+
+    def final_flags(self, argv: Args):
+        return  self.add_and_check_default(argv)
+
+
+
+
 class InfoProvide:
 
     @staticmethod
@@ -97,11 +121,20 @@ class InfoProvide:
                 hidden.append(name)
         return hidden
 
+    @staticmethod
+    def only_folders(path: str):
+        folders = []
+        for name in os.listdir(path):
+            full_path = os.path.join(path, name)
+            if os.path.isdir(full_path):
+                folders.append(name)
+        return folders
+
 
     def provide_files(self, args: Args):
         visibles = self.get_vision_files(args.path)
         if Flags.directory in args.flags:
-            visibles = [f for f in visibles if os.path.isdir(f)]
+            return self.only_folders(args.path)
         if Flags.all in args.flags:
             visibles.extend(self.only_hidden(args.path))
         return visibles
@@ -127,24 +160,31 @@ class Printing:
         return painted
 
 
-    def _print(self,args: Args, info):
+    @staticmethod
+    def format_row(args: Argv):
         if Flags.one in args.flags:
             end = '\n'
-        else:
+        elif Flags.zero in args.flags:
             end = ' '
+        return end
+
+
+    def _print(self,args: Args, info):
         if Flags.color in args.flags:
             painted = self.paint_folders(info, base=args.path)
-            return self.print_inline(painted, end=end)
+            return self.print_inline(painted, end=self.one_in_row(args))
         else:
-            return self.print_inline(info, end=end)
+            return self.print_inline(info, end=self.one_in_row(args))
 
 
 
 def main(argv: list):
     args = Argv()
+    default = AutoFlags()
     info = InfoProvide()
     printing = Printing()
-    _args = args.parse_argv(argv)
+    original_args = args.parse_argv(argv)
+    _args = default.final_flags(original_args)
     _info = info.provide_files(_args)
     printing._print(_args, _info)
 
