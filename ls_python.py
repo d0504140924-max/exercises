@@ -10,6 +10,8 @@ class Flags(Enum):
     all = 'hidden files'
     color = 'colors'
     directory = 'only folders'
+    one = 'one in row'
+    zero = 'end with space'
 
 
 @dataclass
@@ -126,11 +128,15 @@ class Printing:
 
 
     def _print(self,args: Args, info):
+        if Flags.one in args.flags:
+            end = '\n'
+        else:
+            end = ' '
         if Flags.color in args.flags:
             painted = self.paint_folders(info, base=args.path)
-            return self.print_inline(painted)
+            return self.print_inline(painted, end=end)
         else:
-            return self.print_inline(info)
+            return self.print_inline(info, end=end)
 
 
 
