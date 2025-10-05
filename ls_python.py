@@ -9,6 +9,9 @@ from colorama import Style, Fore
 class Flags(Enum):
     all = 'hidden files'
     color = 'colors'
+    directory = 'only folders'
+    one = 'one in row'
+    zero = 'end with space'
 
 
 @dataclass
@@ -16,9 +19,29 @@ class Args:
     path: str
     flags: list[Flags]
 
+class AutoFlags:
+
+    @staticmethod
+    def default_flags():
+        return [Flags.color, Flags.zero]
+
+    @staticmethod
+    def check_conflicting_flags(flag: Flags, flags: list[Flags]):
+        if flag == Flags.zero and Flags.one in flags:
+            return True
+
+
+    def get_auto_flags(self, flags: list[Flags]):
+        default_flags = self.default_flags()
+        auto_flags = list(filter(lambda flag: not self.check_conflicting_flags(flag, flags), default_flags))
+        return set(flags + auto_flags)
+
+
 FILE_ATTRIBUTE_HIDDEN = 0x2
 
 class Argv:
+    def __init__(self, default_flags: AutoFlags):
+        self.default_flags = default_flags
 
     @staticmethod
     def valid_path(path: str):
@@ -62,6 +85,8 @@ class Argv:
     def get_flags(self, argv: list):
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
+        current_flags.extend(self.default_flags.final_flags(argv))
+        print(current_flags)
         return current_flags
 
 
@@ -72,6 +97,7 @@ class Argv:
             path = str(Path.cwd())
         argv1 = Args(path=path, flags=self.get_flags(argv))
         return argv1
+
 
 class InfoProvide:
 
@@ -94,9 +120,20 @@ class InfoProvide:
                 hidden.append(name)
         return hidden
 
+    @staticmethod
+    def only_folders(path: str):
+        folders = []
+        for name in os.listdir(path):
+            full_path = os.path.join(path, name)
+            if os.path.isdir(full_path):
+                folders.append(name)
+        return folders
+
 
     def provide_files(self, args: Args):
         visibles = self.get_vision_files(args.path)
+        if Flags.directory in args.flags:
+            return self.only_folders(args.path)
         if Flags.all in args.flags:
             visibles.extend(self.only_hidden(args.path))
         return visibles
@@ -118,21 +155,30 @@ class Printing:
             if os.path.isdir(full_path):
                 painted += [f'{Fore.BLUE}{f}{Style.RESET_ALL} ']
             else:
-                    painted += [f'{f} ']
+                    painted += [f'{Fore.LIGHTWHITE_EX}{f}{Style.RESET_ALL} ']
         return painted
 
 
+    @staticmethod
+    def format_row(args: Args):
+        if Flags.one in args.flags:
+            end = '\n'
+        return end
+
+
     def _print(self,args: Args, info):
+        end_format = self.format_row(args)
         if Flags.color in args.flags:
             painted = self.paint_folders(info, base=args.path)
-            return self.print_inline(painted)
+            return self.print_inline(painted, end=end_format)
         else:
-            return self.print_inline(info)
+            return self.print_inline(info, end=end_format)
 
 
 
 def main(argv: list):
-    args = Argv()
+    auto_flags = AutoFlags()
+    args = Argv(auto_flags)
     info = InfoProvide()
     printing = Printing()
     _args = args.parse_argv(argv)
