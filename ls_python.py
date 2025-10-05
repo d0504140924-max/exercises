@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum
 import ctypes
+from colorama import Style, Fore
 
 class Flags(Enum):
     all = 'hidden files'
+    color = 'folder-Blue file-White'
 
 
 @dataclass
@@ -107,8 +109,21 @@ class Printing:
         for f in list_names:
             print(f, end=' ')
 
-    def _print(self, info):
-        return self.print_inline(info)
+    @staticmethod
+    def print_colors(list_names, base='.',end='\n'):
+        for f in list_names:
+            full_path = os.path.join(base, f)
+            if os.path.isdir(full_path):
+                print(f'{Fore.BLUE}{f}{Style.RESET_ALL}',end=' ' )
+            else:
+                print(f, end=' ')
+
+
+    def _print(self,args: Args, info):
+        if Flags.color in args.flags:
+            return self.print_colors(info, base=args.path)
+        else:
+            return self.print_inline(info)
 
 
 
@@ -118,7 +133,7 @@ def main(argv: list):
     printing = Printing()
     _args = args.parse_argv(argv)
     _info = info.provide_files(_args)
-    printing._print(_info)
+    printing._print(_args, _info)
 
 if __name__ == '__main__':
     main(sys.argv)
