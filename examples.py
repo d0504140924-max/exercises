@@ -1,23 +1,20 @@
-class GetAutoFlags:
+"""
+הקוד הזה דבר ראשון הרבהיותר קריא
+דבר שני תראה שבפונקציה פה לא התעסקתי כמעט עם שום מימוש שזה דבר טוב
+(למשל הcon[0] שלך וכדומה שזה לא טוב)
+וגם זה מאוד גנרי ותשים לב שאני כמעט לא תלוי בשום חלק אחר
+"""
 
-    def get_auto_flags(self, flags: List[Flags]) -> List[Flags]:
-        auto_flags = self._dufault_flags()
-        auto_flags = list(filter(lambda flag: not self._is_there_curraption(flag, flags), auto_flags))
-        return flags + auto_flags
+def get_double_dash_flags(self, args: Lsit[str]) -> List[Flags]:
 
+    flags = []
+    pre_flags = list(filter(lambda flag: flag.startwith("--"), args))
+    pre_flags = list(map(lambda flag: flag.rplace("--", ""), pre_flags))
+    for flag in pre_flags:
+        if self.is_valid_flag(flag):
+            self.check_for_conflict(flag, flags)
+            flags.append(flag)
+        else:
+            raise ValueError(f"Invalid flag {flag}")
 
-    def _dufault_flags(self) -> Lsit[Flags]:
-        return [Flags("color"), Flags("zero")]
-
-
-    def _is_there_curraption(self, flag: Flags, flags: List[Flags]) -> bool:
-
-        if flag.name == "one":
-            if Flags.zero in flags:
-                return True
-
-        if flag.name == "zero":
-            if Flags.one in flags:
-                return True
-
-
+    return flasg
