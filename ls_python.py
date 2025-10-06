@@ -1,6 +1,6 @@
 import os
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum
 import ctypes
@@ -28,6 +28,13 @@ class Args:
 @dataclass
 class File:
     filename: str
+    size: int
+    time: str
+    permission: str
+
+@dataclass
+class Folder:
+    names: list[File]
 
 class AutoFlags:
 
@@ -47,7 +54,53 @@ class AutoFlags:
         return set(flags + auto_flags)
 
 
+class CheckFlags:
 
+    @staticmethod
+    def conflict_flags() -> list[list[Flags]]:
+        conflict_flags = []
+        conflict1 = [Flags.one, Flags.zero]
+        conflict_flags.append(conflict1)
+        return conflict_flags
+
+    @staticmethod
+    def dependant_flags(flags: list[Flags])->list[Flags]:
+        dependant_flags = []
+        if Flags.size in flags or Flags.time in flags or Flags.permission in flagsand:
+            dependant_flags.append(Flags['one'])
+        return dependant_flags
+
+    @staticmethod
+    def valid_flags(flag: Flags):
+        if not flag in Flags.__members__:
+            return True
+        return False
+
+    def return_conflict(self, flags: list[Flags], flag: Flags):
+        conflict_flags = self.conflict_flags()
+        for list_flag in conflict_flags:
+            if flag in list_flag:
+                for _flag in list_flag:
+                    if _flag != flag and _flag in flags:
+                        return [True, list_flag]
+        return [False, None]
+
+    def check_add_flags(self, current_flags: list[Flags], add_flags: list[Flags]):
+        for flag in add_flags:
+            if not self.valid_flags(flag):
+                raise Exception(f'Invalid flag {flag}')
+            if flag in current_flags:
+                raise Exception(f'exist flag {flag}')
+        conflict = map(lambda _flag: self.return_conflict(current_flags_flags, _flag), add_flags)
+        for con in lst(conflict):
+            if con[0]:
+                raise Exception(f'Conflict{con[1]}')
+        return add_flags
+
+    def add_flags(self, current_flags: list[Flags]):
+        dependant_flags = self.dependant_flags(current_flags)
+        add_flags = self.check_add_flags(current_flags, dependant_flags)
+        return add_flags
 
 class Argv:
     def __init__(self, default_flags: AutoFlags, check_flags: CheckFlags):
@@ -58,16 +111,6 @@ class Argv:
     def valid_path(path: str):
         return Path(path).exists()
 
-    @staticmethod
-    def valid_flags(flag: str):
-        return flag in Flags.__members__
-
-    @staticmethod
-    def the_one_flag(_valid_flags: list[Flags]):
-        if Flags.size in valid_flags or Flags.time in valid_flags or Flags.permission in valid_flagsand:
-            if not Flags.one in valid_flags:
-                return True
-        return False
 
     def get_double_dash_flags(self, args: list):
         valid_flags = []
@@ -106,7 +149,8 @@ class Argv:
             raise ValueError(f'invalid flag/s ')
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
-        current_flags.extend(self.default_flags.get_auto_flags(argv))
+        current_flags.extend(self.default_flags.get_auto_flags(current_flags))
+        current_flags.extend(self.check_flags.add_flags(current_flags))
         return list(set(current_flags))
 
 
@@ -119,30 +163,6 @@ class Argv:
         return argv1
 
 
-class CheckFlags:
-
-    @staticmethod
-    def valid_flags(flags: list[Flags]):
-        for flag in flags:
-            if not flag in Flags.__members__:
-                raise ValueError(f'Invalid flag: {flag}')
-
-    @staticmethod
-    def the_one_flag(flags: list[Flags]):
-        if Flags.size in valid_flags or Flags.time in valid_flags or Flags.permission in valid_flagsand:
-            if not Flags.one in valid_flags:
-                flags.append(Flags['one'])
-
-    @staticmethod
-    def conflicting_flags(flags: list[Flags]):
-        if Flags.one in flags and Flags.zero in flags:
-            raise ValueError(f'flag {Flags.one} conflicts with flag {Flags.zero}')
-
-    def check(self, flags: list[Flags]):
-        self.valid_flags(flags)
-        self.conflicting_flags(flags)
-        self.the_one_flag(flags)
-        return Args.replace(flags=flags)
 
 
 FILE_ATTRIBUTE_HIDDEN = 0x2
