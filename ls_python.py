@@ -68,16 +68,18 @@ class CheckFlags:
         return conflict_flags
 
     @staticmethod
-    def is_valid_flags(flag: str):
-        if not flag in Flags.__members__:
-            return True
-        return False
+    def to_flag(name: str):
+        try:
+            return Flags[name]
+        except KeyError:
+            raise ValueError(f'Unknown flag {name}')
 
     def dependant_flags(self, flags: list[Flags])->list[Flags]:
         dependant_flags = []
         if Flags.size in flags or Flags.time in flags or Flags.permission in flags:
-            _add = self.check_add_flag(flags, Flags['one'])
-            dependant_flags.append(_add)
+            _add = self.check_add_flag(flags, Flags.one)
+            if _add:
+                dependant_flags.append(self.to_flag(_add.name))
         return dependant_flags
 
     def return_conflict(self, flags: list[Flags], flag: Flags):
@@ -93,7 +95,7 @@ class CheckFlags:
         if not self.is_valid_flags(flag):
             raise Exception(f'Invalid flag {flag}')
         if flag in current_flags:
-            raise Exception(f'exist flag {flag}')
+            return None
         con = self.return_conflict(current_flags, flag)
         if con[0]:
             raise Exception(f'Conflict {con[1]}')
@@ -115,12 +117,11 @@ class Argv:
         input_flags =  list(filter(lambda arg: arg.startswith('--'), args))
         for flag in input_flags:
             flag = flag.replace('-', '')
-            if self.check_flags.is_valid_flags(flag):
-                raise ValueError(f'Invalid flag: {flag}')
-            con = self.check_flags.return_conflict(valid_double_flags, Flags[flag])
+            in_flag = self.check_flags.is_valid_flags(flag)
+            con = self.check_flags.return_conflict(valid_double_flags, in_flag)
             if con[0]:
                 raise ValueError(f'Conflict {con[1]}')
-            valid_double_flags.append(Flags[flag])
+            valid_double_flags.append(in_flag)
         return valid_double_flags
 
     def get_one_dash_flags(self, args: list):
@@ -129,12 +130,11 @@ class Argv:
         for flag in one_dash:
             flag = flag.replace('-', '')
             for letter in flag:
-                if not self.check_flags.is_valid_flags(flag):
-                    raise ValueError(f'Invalid flag: {flag}')
-                con = self.check_flags.return_conflict(one_dash_flags, Flags[flag])
+                in_flag =  self.check_flags.is_valid_flags(flag)
+                con = self.check_flags.return_conflict(one_dash_flags, in_flag)
                 if con[0]:
                     raise ValueError(f'Conflict {con[1]}')
-                one_dash_flags.append(Flags[letter])
+                one_dash_flags.append(in_flag)
         return one_dash_flags
 
 
