@@ -1,6 +1,6 @@
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from enum import Enum
 import ctypes
@@ -25,6 +25,10 @@ class Args:
     path: str
     flags: list[Flags]
 
+@dataclass
+class File:
+    filename: str
+
 class AutoFlags:
 
     @staticmethod
@@ -43,11 +47,12 @@ class AutoFlags:
         return set(flags + auto_flags)
 
 
-FILE_ATTRIBUTE_HIDDEN = 0x2
+
 
 class Argv:
-    def __init__(self, default_flags: AutoFlags):
+    def __init__(self, default_flags: AutoFlags, check_flags: CheckFlags):
         self.default_flags = default_flags
+        self.check_flags = check_flags
 
     @staticmethod
     def valid_path(path: str):
@@ -57,18 +62,23 @@ class Argv:
     def valid_flags(flag: str):
         return flag in Flags.__members__
 
+    @staticmethod
+    def the_one_flag(_valid_flags: list[Flags]):
+        if Flags.size in valid_flags or Flags.time in valid_flags or Flags.permission in valid_flagsand:
+            if not Flags.one in valid_flags:
+                return True
+        return False
 
     def get_double_dash_flags(self, args: list):
         valid_flags = []
         input_flags =  list(filter(lambda arg: arg.startswith('--'), args))
         for flag in input_flags:
             flag = flag.replace('-', '')
-            if not self.valid_flags(flag):
+            if not self.check_flags.valid_flags(flag):
                 raise ValueError(f'Invalid flag: {flag}')
             else:
                 valid_flags.append(Flags[flag])
-        if Flags.size in valid_flags or Flags.time in valid_flags or Flags.permission in valid_flags:
-            if not Flags.one in valid_flags:
+            if self.check_flags.the_one_flag(valid_flags):
                 valid_flags.append(Flags['one'])
         return valid_flags
 
@@ -92,10 +102,12 @@ class Argv:
             return path
 
     def get_flags(self, argv: list):
+        if self.check_flags.check(argv):
+            raise ValueError(f'invalid flag/s ')
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
         current_flags.extend(self.default_flags.get_auto_flags(argv))
-        return current_flags
+        return list(set(current_flags))
 
 
     def parse_argv(self, argv: list):
@@ -106,6 +118,34 @@ class Argv:
         argv1 = Args(path=path, flags=self.get_flags(argv))
         return argv1
 
+
+class CheckFlags:
+
+    @staticmethod
+    def valid_flags(flags: list[Flags]):
+        for flag in flags:
+            if not flag in Flags.__members__:
+                raise ValueError(f'Invalid flag: {flag}')
+
+    @staticmethod
+    def the_one_flag(flags: list[Flags]):
+        if Flags.size in valid_flags or Flags.time in valid_flags or Flags.permission in valid_flagsand:
+            if not Flags.one in valid_flags:
+                flags.append(Flags['one'])
+
+    @staticmethod
+    def conflicting_flags(flags: list[Flags]):
+        if Flags.one in flags and Flags.zero in flags:
+            raise ValueError(f'flag {Flags.one} conflicts with flag {Flags.zero}')
+
+    def check(self, flags: list[Flags]):
+        self.valid_flags(flags)
+        self.conflicting_flags(flags)
+        self.the_one_flag(flags)
+        return Args.replace(flags=flags)
+
+
+FILE_ATTRIBUTE_HIDDEN = 0x2
 
 class InfoProvide:
 
@@ -118,6 +158,8 @@ class InfoProvide:
             if attrs != -1 and not (attrs & FILE_ATTRIBUTE_HIDDEN):
                 visible.append(name)
         return visible
+
+
     @staticmethod
     def only_hidden(path: str):
         hidden = []
@@ -165,6 +207,10 @@ class InfoProvide:
             names = self.get_vision_files(args.path)
             if Flags.all in args.flags:
                 names.extend(self.only_hidden(args.path))
+        return names
+
+    def info_for_print(self, args: Args)->list[list]:
+        names = self.provide_files(args)
         final_names = []
         for name in names:
             full_path = os.path.join(args.path, name)
@@ -219,11 +265,12 @@ class Printing:
 
 def main(argv: list):
     auto_flags = AutoFlags()
-    args = Argv(auto_flags)
+    check_flags = CheckFlags()
+    args = Argv(auto_flags, check_flags)
     info = InfoProvide()
     printing = Printing()
     _args = args.parse_argv(argv)
-    _info = info.provide_files(_args)
+    _info = info.info_for_print(_args)
     printing._print(_args, _info)
 
 if __name__ == '__main__':
