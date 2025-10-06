@@ -4,6 +4,10 @@
 (למשל הcon[0] שלך וכדומה שזה לא טוב)
 וגם זה מאוד גנרי ותשים לב שאני כמעט לא תלוי בשום חלק אחר
 """
+import os.path
+
+from ls import Flags
+
 
 def get_double_dash_flags(self, args: Lsit[str]) -> List[Flags]:
 
@@ -17,4 +21,28 @@ def get_double_dash_flags(self, args: Lsit[str]) -> List[Flags]:
         else:
             raise ValueError(f"Invalid flag {flag}")
 
-    return flasg
+    return flags
+
+"""
+קודם תיצור את התיקיה ואז תקבל את כל הקבצים שלה
+ולכל קובץ תקבל את כל התנונים שלו
+ואז תוסיף אותו לתיקייה
+"""
+
+
+
+def info_for_print(self, args: Argv) -> Folder:
+
+    folder = Folder(name=args.name)
+    files = self.provide_files(folder.name)
+    for file in files:
+        full_path = os.path.join(folder.name, file)
+        file_size = self.get_size(full_path) if Flags.size in args.flags else None
+        time_stamp = self.get_time_stamp(full_path) if Flags.time_stamp in args.flags else None
+        permission = self.get_permission(full_path) if Flags.permission in args.flags else None
+        file = File(name=file, size=file_size, time_stamp=time_stamp, permission=permission)
+        folder.files.append(file)
+
+    return folder
+
+
