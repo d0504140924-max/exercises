@@ -6,9 +6,6 @@
 """
 import os.path
 
-from ls import Flags
-
-
 def get_double_dash_flags(self, args: Lsit[str]) -> List[Flags]:
 
     flags = []
@@ -36,11 +33,12 @@ def info_for_print(self, args: Argv) -> Folder:
     files = self.provide_files(folder.name)
     for file in files:
         full_path = os.path.join(folder.name, file)
-        file_size = self.get_size(full_path) if Flags.size in args.flags else None
-        time_stamp = self.get_time_stamp(full_path) if Flags.time_stamp in args.flags else None
-        permission = self.get_permission(full_path) if Flags.permission in args.flags else None
-        file = File(name=file, size=file_size, time_stamp=time_stamp, permission=permission)
-        folder.files.append(file)
+        if os.path.isfile(full_path):
+            file = self.et_file(full_path, args)
+            folder.files.append(file)
+        elif os.path.isdir(full_path):
+            sub_folder = self.create_folder(full_path, args)
+            folder.files.append(sub_folder)
 
     return folder
 
