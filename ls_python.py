@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum
 import ctypes
+from typing import Optional, Union
 from colorama import Style, Fore
 import stat
 import time
@@ -28,17 +29,25 @@ class Args:
 @dataclass
 class File:
     filename: str
-    size: str
-    time: str
-    permission: str
+    size: Optional[str]
+    time: Optional[str]
+    permission: Optional[str]
+
     def __str__(self):
-        str_to_print = f'{self.filename} {self.size} {self.time} {self.permission}'
+        str_to_print = f'{self.filename}'
+        if self.size:
+            str_to_print += f' {self.size}'
+        if self.time:
+            str_to_print += f' {self.time}'
+        if self.permission:
+            str_to_print += f' {self.permission}'
         return str_to_print
 
 
 @dataclass
 class Folder:
-    details: list[File]
+    folder_details: File
+    details: Optional[list[Union[Folder,File]]]
 
 class AutoFlags:
 
@@ -92,8 +101,6 @@ class CheckFlags:
         return [False, None]
 
     def check_add_flag(self, current_flags: list[Flags],flag: Flags):
-        if not self.is_valid_flags(flag):
-            raise Exception(f'Invalid flag {flag}')
         if flag in current_flags:
             return None
         con = self.return_conflict(current_flags, flag)
@@ -111,13 +118,12 @@ class Argv:
     def valid_path(path: str):
         return Path(path).exists()
 
-
     def get_double_dash_flags(self, args: list):
         valid_double_flags = []
         input_flags =  list(filter(lambda arg: arg.startswith('--'), args))
         for flag in input_flags:
             flag = flag.replace('-', '')
-            in_flag = self.check_flags.is_valid_flags(flag)
+            in_flag = self.check_flags.to_flag(flag)
             con = self.check_flags.return_conflict(valid_double_flags, in_flag)
             if con[0]:
                 raise ValueError(f'Conflict {con[1]}')
@@ -130,7 +136,7 @@ class Argv:
         for flag in one_dash:
             flag = flag.replace('-', '')
             for letter in flag:
-                in_flag =  self.check_flags.is_valid_flags(flag)
+                in_flag =  self.check_flags.to_flag(letter)
                 con = self.check_flags.return_conflict(one_dash_flags, in_flag)
                 if con[0]:
                     raise ValueError(f'Conflict {con[1]}')
@@ -159,8 +165,6 @@ class Argv:
             path = str(Path.cwd())
         argv1 = Args(path=path, flags=self.get_flags(argv))
         return argv1
-
-
 
 
 FILE_ATTRIBUTE_HIDDEN = 0x2
@@ -232,15 +236,15 @@ class InfoProvide:
         final_names = []
         for name in names:
             full_path = os.path.join(args.path, name)
-            _name = File(filename=name, size='', time='', permission='')
+            _file = File(filename=name, size=None, time=None, permission=None)
             if Flags.size in args.flags:
-                _name.size = self.get_size(full_path)
+                _file.size = self.get_size(full_path)
             if Flags.time in args.flags:
-                _name.time = self.get_time(full_path)
+                _file.time = self.get_time(full_path)
             if Flags.permission in args.flags:
-                _name.permission = self.get_permission(full_path)
+                _file.permission = self.get_permission(full_path)
             final_names.append(_name)
-        return Folder(final_names)
+        return Folder.final_names
 
 
 class Printing:
