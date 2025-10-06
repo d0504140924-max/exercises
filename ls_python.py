@@ -28,13 +28,17 @@ class Args:
 @dataclass
 class File:
     filename: str
-    size: int
+    size: str
     time: str
     permission: str
+    def __str__(self):
+        str_to_print = f'{self.filename} {self.size} {self.time} {self.permission}'
+        return str_to_print
+
 
 @dataclass
 class Folder:
-    names: list[File]
+    details: list[File]
 
 class AutoFlags:
 
@@ -57,50 +61,44 @@ class AutoFlags:
 class CheckFlags:
 
     @staticmethod
-    def conflict_flags() -> list[list[Flags]]:
-        conflict_flags = []
-        conflict1 = [Flags.one, Flags.zero]
-        conflict_flags.append(conflict1)
+    def conflict_flags() -> dict:
+        conflict_flags = {}
+        conflict_flags[Flags.one] =  [Flags.zero]
+        conflict_flags[Flags.zero] =  [Flags.one, Flags.size, Flags.time, Flags.permission]
         return conflict_flags
 
     @staticmethod
-    def dependant_flags(flags: list[Flags])->list[Flags]:
-        dependant_flags = []
-        if Flags.size in flags or Flags.time in flags or Flags.permission in flagsand:
-            dependant_flags.append(Flags['one'])
-        return dependant_flags
-
-    @staticmethod
-    def valid_flags(flag: Flags):
+    def is_valid_flags(flag: str):
         if not flag in Flags.__members__:
             return True
         return False
 
+    def dependant_flags(self, flags: list[Flags])->list[Flags]:
+        dependant_flags = []
+        if Flags.size in flags or Flags.time in flags or Flags.permission in flags:
+            _add = self.check_add_flag(flags, Flags['one'])
+            dependant_flags.append(_add)
+        return dependant_flags
+
     def return_conflict(self, flags: list[Flags], flag: Flags):
         conflict_flags = self.conflict_flags()
-        for list_flag in conflict_flags:
-            if flag in list_flag:
-                for _flag in list_flag:
-                    if _flag != flag and _flag in flags:
-                        return [True, list_flag]
+        for key in conflict_flags:
+            if key == flag:
+                for _flag in conflict_flags[key]:
+                    if _flag in flags:
+                        return [True, (key, _flag)]
         return [False, None]
 
-    def check_add_flags(self, current_flags: list[Flags], add_flags: list[Flags]):
-        for flag in add_flags:
-            if not self.valid_flags(flag):
-                raise Exception(f'Invalid flag {flag}')
-            if flag in current_flags:
-                raise Exception(f'exist flag {flag}')
-        conflict = map(lambda _flag: self.return_conflict(current_flags_flags, _flag), add_flags)
-        for con in lst(conflict):
-            if con[0]:
-                raise Exception(f'Conflict{con[1]}')
-        return add_flags
+    def check_add_flag(self, current_flags: list[Flags],flag: Flags):
+        if not self.is_valid_flags(flag):
+            raise Exception(f'Invalid flag {flag}')
+        if flag in current_flags:
+            raise Exception(f'exist flag {flag}')
+        con = self.return_conflict(current_flags, flag)
+        if con[0]:
+            raise Exception(f'Conflict {con[1]}')
+        return flag
 
-    def add_flags(self, current_flags: list[Flags]):
-        dependant_flags = self.dependant_flags(current_flags)
-        add_flags = self.check_add_flags(current_flags, dependant_flags)
-        return add_flags
 
 class Argv:
     def __init__(self, default_flags: AutoFlags, check_flags: CheckFlags):
@@ -113,17 +111,17 @@ class Argv:
 
 
     def get_double_dash_flags(self, args: list):
-        valid_flags = []
+        valid_double_flags = []
         input_flags =  list(filter(lambda arg: arg.startswith('--'), args))
         for flag in input_flags:
             flag = flag.replace('-', '')
-            if not self.check_flags.valid_flags(flag):
+            if self.check_flags.is_valid_flags(flag):
                 raise ValueError(f'Invalid flag: {flag}')
-            else:
-                valid_flags.append(Flags[flag])
-            if self.check_flags.the_one_flag(valid_flags):
-                valid_flags.append(Flags['one'])
-        return valid_flags
+            con = self.check_flags.return_conflict(valid_double_flags, Flags[flag])
+            if con[0]:
+                raise ValueError(f'Conflict {con[1]}')
+            valid_double_flags.append(Flags[flag])
+        return valid_double_flags
 
     def get_one_dash_flags(self, args: list):
         one_dash_flags = []
@@ -131,10 +129,12 @@ class Argv:
         for flag in one_dash:
             flag = flag.replace('-', '')
             for letter in flag:
-                if not self.valid_flags(letter):
-                    raise ValueError(f'Invalid flag: {letter}')
-                else:
-                    one_dash_flags.append(Flags[letter])
+                if not self.check_flags.is_valid_flags(flag):
+                    raise ValueError(f'Invalid flag: {flag}')
+                con = self.check_flags.return_conflict(one_dash_flags, Flags[flag])
+                if con[0]:
+                    raise ValueError(f'Conflict {con[1]}')
+                one_dash_flags.append(Flags[letter])
         return one_dash_flags
 
 
@@ -145,12 +145,10 @@ class Argv:
             return path
 
     def get_flags(self, argv: list):
-        if self.check_flags.check(argv):
-            raise ValueError(f'invalid flag/s ')
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
+        current_flags.extend(self.check_flags.dependant_flags(current_flags))
         current_flags.extend(self.default_flags.get_auto_flags(current_flags))
-        current_flags.extend(self.check_flags.add_flags(current_flags))
         return list(set(current_flags))
 
 
@@ -229,26 +227,26 @@ class InfoProvide:
                 names.extend(self.only_hidden(args.path))
         return names
 
-    def info_for_print(self, args: Args)->list[list]:
+    def info_for_print(self, args: Args)->Folder:
         names = self.provide_files(args)
         final_names = []
         for name in names:
             full_path = os.path.join(args.path, name)
-            _name = name
+            _name = File(filename=name, size='', time='', permission='')
             if Flags.size in args.flags:
-                _name += f'. size= {self.get_size(full_path)}'
+                _name.size = self.get_size(full_path)
             if Flags.time in args.flags:
-                _name += f'. time= {self.get_time(full_path)}'
+                _name.time = self.get_time(full_path)
             if Flags.permission in args.flags:
-                _name += f'. perm= {self.get_permission(full_path)}'
-            final_names.append([name, _name])
-        return final_names
+                _name.permission = self.get_permission(full_path)
+            final_names.append(_name)
+        return Folder(final_names)
 
 
 class Printing:
 
     @staticmethod
-    def print_inline(list_names: list, end=' '):
+    def print_inline(list_names: list[File], end=' '):
         for f in list_names:
             print(f, end=end)
 
@@ -257,11 +255,11 @@ class Printing:
     def paint_folders(list_names, base='.'):
         painted = []
         for f in list_names:
-            full_path = os.path.join(base, f[0])
+            full_path = os.path.join(base, f.filename)
             if os.path.isdir(full_path):
-                painted += [f'{Fore.BLUE}{f[1]}{Style.RESET_ALL} ']
+                painted += [f'{Fore.BLUE}{str(f)}{Style.RESET_ALL} ']
             else:
-                    painted += [f'{Fore.LIGHTWHITE_EX}{f[1]}{Style.RESET_ALL} ']
+                    painted += [f'{Fore.LIGHTWHITE_EX}{str(f)}{Style.RESET_ALL} ']
         return painted
 
 
@@ -273,13 +271,13 @@ class Printing:
             return ' '
 
 
-    def _print(self,args: Args, info: list):
+    def _print(self,args: Args, info: Folder):
         end_format = self.format_row(args)
         if Flags.color in args.flags:
-            painted = self.paint_folders(info, base=args.path)
+            painted = self.paint_folders(info.details, base=args.path)
             return self.print_inline(painted, end=end_format)
         else:
-            return self.print_inline(info, end=end_format)
+            return self.print_inline(info.details, end=end_format)
 
 
 
