@@ -92,6 +92,7 @@ class CheckFlags:
             return None
         self.return_conflict(current_flags, flag)
         return flag
+    
 
 class AutoFlags:
 
@@ -102,12 +103,14 @@ class AutoFlags:
         def default_flags() -> list[Flags]:
             return [Flags.color, Flags.zero]
 
-        def get_auto_flags(self) -> list[Flags]:
+        def get_auto_flags(self, flags: list[Flags]) -> list[Flags]:
             default_flags = self.default_flags()
             conflict_flags = self.check_flags.conflict_flags()
-            for flag in default_flags:
-                if flag in conflict_flags[flag]:
-                    default_flags.remove(flag)
+            for key in conflict_flags:
+                for flag in default_flags:
+                    if flag in conflict_flags[key]:
+                        if key in flags:
+                            default_flags.remove(flag)
             return default_flags
 
 
@@ -151,7 +154,7 @@ class Argv:
         current_flags = self.get_one_dash_flags(argv)
         current_flags.extend(self.get_double_dash_flags(argv))
         current_flags.extend(self.check_flags.dependant_flags(current_flags))
-        current_flags.extend(self.default_flags.get_auto_flags())
+        current_flags.extend(self.default_flags.get_auto_flags(current_flags))
         return list(set(current_flags))
 
     def parse_argv(self, argv: list)->Args:
