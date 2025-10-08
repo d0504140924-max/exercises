@@ -1,6 +1,6 @@
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dc_replace
 from pathlib import Path
 from enum import Enum
 import ctypes
@@ -20,9 +20,24 @@ class Flags(Enum):
     time = 'last time'
     permission = 'permissions'
     long = 'all details'
+    escape = 'escape text'
     u = 'access time'
     c = 'change time'
+    inode = 'file id'
+    S = 'dort by size'
+    recursive = 'recursive'
 
+short_to_long = {
+    'a': 'all',
+    'd': 'directory',
+    's': 'size',
+    'l': 'long',
+    'b': 'escape',
+    'u': 'u',
+    'c': 'c',
+    'i': 'inode',
+    'S': 'S',
+    'R': 'recursive'}
 
 @dataclass
 class Args:
@@ -32,13 +47,18 @@ class Args:
 
 @dataclass
 class File:
+    inode: Optional[str]
+    full_path: Optional[str]
     filename: str
     size: Optional[str]
     time: Optional[str]
     permission: Optional[str]
 
     def __str__(self)->str:
-        str_to_print = f'{self.filename}'
+        str_to_print = ""
+        if self.inode:
+            str_to_print = f'{self.inode}'
+        str_to_print += f'{self.filename}'
         if self.size:
             str_to_print += f' {self.size}'
         if self.time:
@@ -60,16 +80,20 @@ class CheckFlags:
     def conflict_flags() -> dict:
         conflict_flags = {}
         conflict_flags[Flags.one] =  [Flags.zero]
-        conflict_flags[Flags.zero] =  [Flags.one, Flags.size, Flags.time, Flags.permission, Flags.long]
+        conflict_flags[Flags.zero] =  [Flags.one, Flags.size, Flags.time, Flags.permission, Flags.long, Flags.recursive]
         conflict_flags[Flags.all] = []
-        conflict_flags[Flags.color] = []
+        conflict_flags[Flags.color] = [Flags.escape]
         conflict_flags[Flags.directory] = []
         conflict_flags[Flags.size] = [Flags.zero]
         conflict_flags[Flags.time] = [Flags.zero]
         conflict_flags[Flags.permission] = [Flags.zero]
         conflict_flags[Flags.long] = [Flags.zero]
+        conflict_flags[Flags.escape] = [Flags.color]
         conflict_flags[Flags.c] = []
         conflict_flags[Flags.u] = []
+        conflict_flags[Flags.inode] = []
+        conflict_flags[Flags.S] = []
+        conflict_flags[Flags.recursive] = [Flags.zero]
         return conflict_flags
 
     @staticmethod
@@ -88,6 +112,10 @@ class CheckFlags:
             dependant_flags += [Flags.size, Flags.time, Flags.permission]
         if Flags.u in flags or Flags.c in flags:
             dependant_flags += [Flags.time]
+        if Flags.S in flags:
+            dependant_flags += [Flags.size]
+        if Flags.recursive in flags:
+            dependant_flags += [Flags.one]
         return dependant_flags
 
     def dependant_flags(self, flags: list[Flags])->list[Flags]:
@@ -102,7 +130,7 @@ class CheckFlags:
         conflict_flags = self.conflict_flags()
         for _flag in flags:
             if _flag in conflict_flags[flag]:
-                        raise ValueError(f'conflict{flag}{_flag}')
+                        raise ValueError(f'conflict{flag} - {_flag}')
 
     def check_add_flag(self, current_flags: list[Flags],flag: Flags)->Optional[Flags]:
         if flag in current_flags:
@@ -143,7 +171,7 @@ class Argv:
     def get_double_dash_flags(self, args: list)->list[Flags]:
         valid_double_flags = []
         input_flags =  list(filter(lambda arg: arg.startswith('--'), args))
-        input_flags = list(map(lambda _flag: _flag.replace('-', ''),  input_flags))
+        input_flags = list(map(lambda _flag: _flag.replace('--', ''),  input_flags))
         for flag in input_flags:
             in_flag = self.check_flags.to_flag(flag)
             self.check_flags.return_conflict(valid_double_flags, in_flag)
@@ -156,7 +184,8 @@ class Argv:
         input_flags = list(map(lambda _flag: _flag.replace('-', ''), input_flags))
         for flag in input_flags:
             for letter in flag:
-                in_flag =  self.check_flags.to_flag(letter)
+                long_flag = short_to_long[letter]
+                in_flag =  self.check_flags.to_flag(long_flag)
                 self.check_flags.return_conflict(input_flags, in_flag)
                 one_dash_flags.append(in_flag)
         return one_dash_flags
@@ -242,7 +271,12 @@ class InfoProvide:
         return f'{perm}'
 
     @staticmethod
-    def time_flags(args: Args) -> Union[Flags.c, Flags.u]:
+    def get_inode(path: str)->str:
+        st = os.stat(path)
+        return f'{st.st_ino}'
+
+    @staticmethod
+    def time_flags(args: Args) -> Optional[Union[Flags.c, Flags.u]]:
         if Flags.c in args.flags:
             return Flags.c
         elif Flags.u in args.flags:
@@ -253,35 +287,44 @@ class InfoProvide:
         kind_time = self.kind_of_time(path)
         return kind_time[flag] if flag else kind_time['mtime']
 
-    def provide_files(self, args: Args)->list[str]:
+    def provide_files(self,path:str, args: Args)->list[str]:
         if Flags.directory in args.flags:
-            names =  self.only_folders(args.path)
+            names =  self.only_folders(path)
             if Flags.all in args.flags:
-                names.extend(self.only_hidden(args.path))
+                names.extend(self.only_hidden(path))
         else:
-            names = self.get_vision_files(args.path)
+            names = self.get_vision_files(path)
             if Flags.all in args.flags:
-                names.extend(self.only_hidden(args.path))
+                names.extend(self.only_hidden(path))
         return names
 
-    def info_for_print(self, args: Args)->Folder:
-        names = self.provide_files(args)
+    def info_to_folder(self, args: Args, names: list)->list[Union[File, Folder]]:
         final_names = []
         for name in names:
             full_path = os.path.join(args.path, name)
-            _file = File(filename=name, size=None, time=None, permission=None)
+            _file = File(inode=None, full_path=full_path, filename=name, size=None, time=None, permission=None)
             if Flags.size in args.flags:
                 _file.size = self.get_size(full_path)
             if Flags.time in args.flags:
                 _file.time = self.get_time(full_path, self.time_flags(args))
             if Flags.permission in args.flags:
                 _file.permission = self.get_permission(full_path)
+            if Flags.inode in args.flags:
+                _file.inode = self.get_inode(full_path)
             if os.path.isdir(full_path):
-                _folder = Folder(folder_details=_file, files_details=None)
+                if Flags.recursive in args.flags:
+                    child_args = dc_replace(args, path=full_path, flags=args.flags)
+                    _folder = Folder(folder_details=_file,
+                                 files_details=self.info_to_folder(child_args, self.provide_files(full_path, args)))
+                else:
+                    _folder = Folder(folder_details=_file,files_details=None)
                 final_names.append(_folder)
             if not os.path.isdir(full_path):
                 final_names.append(_file)
-        folder = Folder(files_details = final_names, folder_details=None)
+        return final_names
+
+    def info_for_print(self, args: Args, names: list)->Folder:
+        folder = Folder(files_details = self.info_to_folder(args, names), folder_details=None)
         return folder
 
 
@@ -298,19 +341,33 @@ class Printing:
         return list_files
 
     @staticmethod
-    def print_inline(list_names: list[Union[File, str]], end=' ')->None:
-        for f in list_names:
-            print(f, end=end)
+    def sort_by_size(files: list[File]) -> list[File]:
+        files.sort(key=lambda f: int(f.size), reverse=True)
+        return files
 
     @staticmethod
-    def paint_folders(list_names, base='.')->list[str]:
+    def escape_text(info_str: list[str])->list[str]:
+        escape_text = []
+        for name in info_str:
+            _name = repr(str(name))
+            escape_text.append(_name)
+        return escape_text
+
+    @staticmethod
+    def print_inline(list_names: list[Union[File, str]], end=' ', intend=0)->None:
+        _intend = ' ' * intend
+        for f in list_names:
+            print(f'{_intend}{f}', end=end)
+
+    @staticmethod
+    def paint_folders(list_names: list[File], base='.')->list[str]:
         painted = []
         for f in list_names:
             full_path = os.path.join(base, f.filename)
             if os.path.isdir(full_path):
                 painted += [f'{Fore.BLUE}{str(f)}{Style.RESET_ALL} ']
             else:
-                    painted += [f'{Fore.LIGHTWHITE_EX}{str(f)}{Style.RESET_ALL} ']
+                painted += [f'{Fore.LIGHTWHITE_EX}{str(f)}{Style.RESET_ALL} ']
         return painted
 
     @staticmethod
@@ -320,15 +377,24 @@ class Printing:
         else:
             return ' '
 
-    def _print(self,args: Args, info: Folder)->None:
+    def _print(self,args: Args, info: Folder, intend=0)->None:
         list_fils = self.from_folder_to_list(info)
+        if Flags.recursive in args.flags:
+            for f in info.files_details:
+                if isinstance(f, Folder):
+                    self._print(args, f, intend=intend+4)
+        if Flags.S in args.flags:
+            list_fils = self.sort_by_size(list_fils)
         end_format = self.format_row(args)
+        final_list = []
         if Flags.color in args.flags:
             painted = self.paint_folders(list_fils, base=args.path)
-            return self.print_inline(painted, end=end_format)
+            final_list += painted
         else:
-            return self.print_inline(list_fils, end=end_format)
-
+            final_list += list_fils
+        if Flags.escape in args.flags:
+            final_list = self.escape_text(final_list)
+        return self.print_inline(final_list, end=end_format, intend=intend)
 
 
 def main(argv: list)->None:
@@ -338,7 +404,8 @@ def main(argv: list)->None:
     info = InfoProvide()
     printing = Printing()
     _args = args.parse_argv(argv)
-    _info = info.info_for_print(_args)
+    to_info = info.provide_files(_args.path, _args)
+    _info = info.info_for_print(_args, to_info)
     printing._print(_args, _info)
 
 if __name__ == '__main__':

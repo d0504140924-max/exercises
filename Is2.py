@@ -234,3 +234,13 @@ def main():
     Printing().printing()
 if __name__ == '__main__':
     main()
+
+@staticmethod
+    def from_file_to_str(files: list[File])->list[str]:
+        str_files = []
+        for name in files:
+            if isinstance(name, File):
+                str_files.append(str(name))
+            elif isinstance(name, Folder):
+                str_files.append(str(name.folder_details))
+        return str_files
