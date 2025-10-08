@@ -19,6 +19,9 @@ class Flags(Enum):
     size = 'size in bytes'
     time = 'last time'
     permission = 'permissions'
+    long = 'all details'
+    u = 'access time'
+    c = 'change time'
 
 
 @dataclass
@@ -56,14 +59,17 @@ class CheckFlags:
     @staticmethod
     def conflict_flags() -> dict:
         conflict_flags = {}
-        conflict_flags[Flags.permission] = []
         conflict_flags[Flags.one] =  [Flags.zero]
-        conflict_flags[Flags.zero] =  [Flags.one, Flags.size, Flags.time, Flags.permission]
+        conflict_flags[Flags.zero] =  [Flags.one, Flags.size, Flags.time, Flags.permission, Flags.long]
         conflict_flags[Flags.all] = []
         conflict_flags[Flags.color] = []
         conflict_flags[Flags.directory] = []
-        conflict_flags[Flags.size] = []
-        conflict_flags[Flags.time] = []
+        conflict_flags[Flags.size] = [Flags.zero]
+        conflict_flags[Flags.time] = [Flags.zero]
+        conflict_flags[Flags.permission] = [Flags.zero]
+        conflict_flags[Flags.long] = [Flags.zero]
+        conflict_flags[Flags.c] = []
+        conflict_flags[Flags.u] = []
         return conflict_flags
 
     @staticmethod
@@ -73,10 +79,21 @@ class CheckFlags:
         except KeyError:
             raise ValueError(f'Unknown flag {name}')
 
-    def dependant_flags(self, flags: list[Flags])->list[Flags]:
+    @staticmethod
+    def list_dependant_flags(flags: list[Flags])->list[Flags]:
         dependant_flags = []
-        if Flags.size in flags or Flags.time in flags or Flags.permission in flags:
-            _add = self.check_add_flag(flags, Flags.one)
+        if Flags.size in flags or Flags.time in flags or Flags.permission in flags or Flags.long in flags:
+            dependant_flags += [Flags.one]
+        if Flags.long in flags:
+            dependant_flags += [Flags.size, Flags.time, Flags.permission]
+        if Flags.u in flags or Flags.c in flags:
+            dependant_flags += [Flags.time]
+        return dependant_flags
+
+    def dependant_flags(self, flags: list[Flags])->list[Flags]:
+        dependant_flags = self.list_dependant_flags(flags)
+        for flag in flags:
+            _add = self.check_add_flag(flags, flag)
             if _add:
                 dependant_flags.append(self.to_flag(_add.name))
         return dependant_flags
@@ -92,7 +109,7 @@ class CheckFlags:
             return None
         self.return_conflict(current_flags, flag)
         return flag
-    
+
 
 class AutoFlags:
 
@@ -205,18 +222,36 @@ class InfoProvide:
         return f"{st.st_size:}"
 
     @staticmethod
-    def get_time(path : str)->str:
+    def kind_of_time(path : str)->dict:
         st = os.stat(path)
-        dt = time.localtime(st.st_mtime)
-        date_s = time.strftime("%d/%m/%Y", dt)
-        time_s = time.strftime("%H:%M", dt)
-        return f'[{date_s}, {time_s}]'
+        dt1, dt2, dt3 = time.localtime(st.st_mtime), time.localtime(st.st_ctime), time.localtime(st.st_atime)
+        mtime_date_s = time.strftime("%d/%m/%Y", dt1)
+        mtime_time_s = time.strftime("%H:%M", dt1)
+        ctime_date_s = time.strftime("%d/%m/%Y", dt2)
+        ctime_time_s = time.strftime("%H:%M", dt2)
+        atime_date_s = time.strftime("%d/%m/%Y", dt3)
+        atime_time_s = time.strftime("%H:%M", dt3)
+        kind_time = {'mtime': f'[{mtime_date_s}, {mtime_time_s}]', Flags.c: f'[{ctime_date_s}, {ctime_time_s}]',
+                     Flags.u: f'[{atime_date_s}, {atime_time_s}]'}
+        return kind_time
 
     @staticmethod
     def get_permission(path : str)->str:
         st = os.stat(path)
         perm = stat.filemode(st.st_mode)
         return f'{perm}'
+
+    @staticmethod
+    def time_flags(args: Args) -> Union[Flags.c, Flags.u]:
+        if Flags.c in args.flags:
+            return Flags.c
+        elif Flags.u in args.flags:
+            return Flags.u
+        return None
+
+    def get_time(self, path : str, flag: Union[Flags.c, Flags.u]=None)->str:
+        kind_time = self.kind_of_time(path)
+        return kind_time[flag] if flag else kind_time['mtime']
 
     def provide_files(self, args: Args)->list[str]:
         if Flags.directory in args.flags:
@@ -238,7 +273,7 @@ class InfoProvide:
             if Flags.size in args.flags:
                 _file.size = self.get_size(full_path)
             if Flags.time in args.flags:
-                _file.time = self.get_time(full_path)
+                _file.time = self.get_time(full_path, self.time_flags(args))
             if Flags.permission in args.flags:
                 _file.permission = self.get_permission(full_path)
             if os.path.isdir(full_path):
