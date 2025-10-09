@@ -244,3 +244,22 @@ if __name__ == '__main__':
             elif isinstance(name, Folder):
                 str_files.append(str(name.folder_details))
         return str_files
+
+
+def _list_dependant_flags(self, flags: list[Flags]) -> list[Flags]:
+    dependant_flags = set(flags)
+    if Flags.u in flags or Flags.c in flags:
+        flags.add(Flags.time)
+    if Flags.S in flags:
+        dependant_flags += [Flags.size]
+    if Flags.numericuidgid in flags:
+        dependant_flags += [Flags.long]
+    if Flags.long in flags:
+        dependant_flags += [Flags.size, Flags.time, Flags.permission]
+    if Flags.size in flags or Flags.time in flags or Flags.permission in flags:
+        dependant_flags += [Flags.one]
+    if Flags.recursive in flags:
+        dependant_flags += [Flags.one]
+    if len(dependant_flags) > 0:
+        self._list_dependant_flags(dependant_flags)
+    return dependant_flags

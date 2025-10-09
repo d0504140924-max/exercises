@@ -5,7 +5,7 @@ from pathlib import Path
 from enum import Enum
 import ctypes
 from typing import Optional, Union
-from colorama import Style, Fore
+from colorama import Style, Fore, init
 import stat
 import time
 
@@ -24,8 +24,20 @@ class Flags(Enum):
     u = 'access time'
     c = 'change time'
     inode = 'file id'
-    S = 'dort by size'
+    sort = 'sort='
+    S = 'sort by size'
+    U = 'default sort'
+    t = 'sort time'
+    v = 'sort by version'
+    X = 'sort by extension'
+    width = 'sort by width'
     recursive = 'recursive'
+    m = 'zero with ,'
+    numericuidgid = 'like -l, but list numeric user and group IDs'
+    showcontrolchars = 'show control characters'
+    hidecontrolchars = 'hide control characters'
+    Q = 'names with quote'
+    reverse = 'reverse order'
 
 short_to_long = {
     'a': 'all',
@@ -37,12 +49,22 @@ short_to_long = {
     'c': 'c',
     'i': 'inode',
     'S': 'S',
-    'R': 'recursive'}
+    'R': 'recursive',
+    'm': 'm',
+    'n': 'numericuidgid',
+    'q': 'hidecontrolchars',
+    'Q': 'Q',
+    'r': 'reverse',
+    'U': 'U',
+    't': 't',
+    'v': 'v',
+    'X': 'X'}
 
 @dataclass
 class Args:
     path: str
     flags: list[Flags]
+    parameters: dict[Flags, str]
 
 
 @dataclass
@@ -52,13 +74,17 @@ class File:
     filename: str
     size: Optional[str]
     time: Optional[str]
+    time_to_sort: Optional[float]
     permission: Optional[str]
+    uid_gid: Optional[str]
 
     def __str__(self)->str:
         str_to_print = ""
         if self.inode:
             str_to_print = f'{self.inode}'
         str_to_print += f'{self.filename}'
+        if self.uid_gid:
+            str_to_print += f' {self.uid_gid}'
         if self.size:
             str_to_print += f' {self.size}'
         if self.time:
@@ -79,21 +105,36 @@ class CheckFlags:
     @staticmethod
     def conflict_flags() -> dict:
         conflict_flags = {}
-        conflict_flags[Flags.one] =  [Flags.zero]
-        conflict_flags[Flags.zero] =  [Flags.one, Flags.size, Flags.time, Flags.permission, Flags.long, Flags.recursive]
+        conflict_flags[Flags.one] =  [Flags.zero, Flags.m]
+        conflict_flags[Flags.zero] =  [Flags.one, Flags.size, Flags.time, Flags.permission, Flags.long, Flags.recursive,
+                                       Flags.numericuidgid, Flags.reverse, Flags.X, Flags.v, Flags.width, Flags.t,
+                                       Flags.S, Flags.U]
         conflict_flags[Flags.all] = []
         conflict_flags[Flags.color] = [Flags.escape]
         conflict_flags[Flags.directory] = []
-        conflict_flags[Flags.size] = [Flags.zero]
-        conflict_flags[Flags.time] = [Flags.zero]
-        conflict_flags[Flags.permission] = [Flags.zero]
-        conflict_flags[Flags.long] = [Flags.zero]
-        conflict_flags[Flags.escape] = [Flags.color]
+        conflict_flags[Flags.size] = [Flags.zero, Flags.m]
+        conflict_flags[Flags.time] = [Flags.zero, Flags.m]
+        conflict_flags[Flags.permission] = [Flags.zero, Flags.m]
+        conflict_flags[Flags.long] = [Flags.zero, Flags.m]
+        conflict_flags[Flags.escape] = [Flags.color, Flags.hidecontrolchars, Flags.Q]
         conflict_flags[Flags.c] = []
         conflict_flags[Flags.u] = []
         conflict_flags[Flags.inode] = []
-        conflict_flags[Flags.S] = []
         conflict_flags[Flags.recursive] = [Flags.zero]
+        conflict_flags[Flags.m] = [Flags.one, Flags.size, Flags.time, Flags.permission, Flags.long, Flags.recursive,
+                                   Flags.numericuidgid]
+        conflict_flags[Flags.numericuidgid] = [Flags.zero, Flags.m]
+        conflict_flags[Flags.showcontrolchars] = [Flags.hidecontrolchars]
+        conflict_flags[Flags.hidecontrolchars] = [Flags.showcontrolchars, Flags.escape]
+        conflict_flags[Flags.Q] = [Flags.escape]
+        conflict_flags[Flags.reverse] = [Flags.zero]
+        conflict_flags[Flags.U] = [Flags.X, Flags.v, Flags.width, Flags.t, Flags.S, Flags.zero]
+        conflict_flags[Flags.X] = [Flags.U, Flags.v, Flags.width, Flags.t, Flags.S, Flags.zero]
+        conflict_flags[Flags.v] = [Flags.X, Flags.U, Flags.width, Flags.t, Flags.S, Flags.zero]
+        conflict_flags[Flags.width] = [Flags.X, Flags.v, Flags.U, Flags.t, Flags.S, Flags.zero]
+        conflict_flags[Flags.t] = [Flags.X, Flags.v, Flags.width, Flags.U, Flags.S, Flags.zero]
+        conflict_flags[Flags.S] = [Flags.zero, Flags.X, Flags.v, Flags.width, Flags.U, Flags.t]
+        conflict_flags[Flags.sort] = [Flags.zero]
         return conflict_flags
 
     @staticmethod
@@ -103,23 +144,51 @@ class CheckFlags:
         except KeyError:
             raise ValueError(f'Unknown flag {name}')
 
-    @staticmethod
-    def list_dependant_flags(flags: list[Flags])->list[Flags]:
-        dependant_flags = []
-        if Flags.size in flags or Flags.time in flags or Flags.permission in flags or Flags.long in flags:
-            dependant_flags += [Flags.one]
-        if Flags.long in flags:
-            dependant_flags += [Flags.size, Flags.time, Flags.permission]
-        if Flags.u in flags or Flags.c in flags:
-            dependant_flags += [Flags.time]
-        if Flags.S in flags:
-            dependant_flags += [Flags.size]
-        if Flags.recursive in flags:
-            dependant_flags += [Flags.one]
-        return dependant_flags
+    def get_flag_to_sort(self, param: str) -> Optional[Flags]:
+        if param == 'size':
+            return Flags.S
+        elif param == 'time':
+            return Flags.t
+        elif param == 'name':
+            return Flags.U
+        elif param == 'extension':
+            return Flags.X
+        elif param == 'version':
+            return Flags.v
+        elif param == 'width':
+            return Flags.width
+        else:
+            raise ValueError(f'Unknown parameter {param}')
 
-    def dependant_flags(self, flags: list[Flags])->list[Flags]:
-        dependant_flags = self.list_dependant_flags(flags)
+    def collect_dependant(self, flags: set[Flags], params:dict[Flags,str])->list[Flags]:
+        current_flags = set(flags)
+        if Flags.u in flags or Flags.c in flags:
+            flags.add(Flags.time)
+        if Flags.S in flags:
+            flags.add(Flags.size)
+        if Flags.numericuidgid in flags:
+            flags.add(Flags.long)
+        if Flags.long in flags:
+            flags.update([Flags.size, Flags.time, Flags.permission])
+        if Flags.size in flags or Flags.time in flags or Flags.permission in flags:
+            flags.add(Flags.one)
+        if Flags.recursive in flags:
+            flags.add(Flags.one)
+        if Flags.reverse in flags:
+            flags.add(Flags.S)
+        if Flags.sort in flags:
+            flags.add(self.get_flag_to_sort(params[Flags.sort]))
+        if Flags.t in flags:
+            flags.add(Flags.time)
+        return flags if flags == current_flags else self.collect_dependant(flags, params)
+
+    def list_dependant_flags(self, flags: list[Flags], params: dict[Flags,str])->list[Flags]:
+        current_flags = set(flags)
+        dependant_flags = self.collect_dependant(set(flags), params)
+        return [i for i in dependant_flags if i not in current_flags]
+
+    def dependant_flags(self, flags: list[Flags], params: dict[Flags, str])->list[Flags]:
+        dependant_flags = self.list_dependant_flags(flags, params)
         for flag in flags:
             _add = self.check_add_flag(flags, flag)
             if _add:
@@ -146,7 +215,7 @@ class AutoFlags:
 
         @staticmethod
         def default_flags() -> list[Flags]:
-            return [Flags.color, Flags.zero]
+            return [Flags.color, Flags.zero, Flags.showcontrolchars]
 
         def get_auto_flags(self, flags: list[Flags]) -> list[Flags]:
             default_flags = self.default_flags()
@@ -168,10 +237,29 @@ class Argv:
     def valid_path(path: str)->bool:
         return Path(path).exists()
 
-    def get_double_dash_flags(self, args: list)->list[Flags]:
+    @staticmethod
+    def split_flags_params(args: list[str]):
+        flags = []
+        for arg in args:
+            if '=' in arg:
+                flag, param  = arg.split('=')
+                flags.append(flag)
+            else:
+                flags.append(arg)
+        return flags
+
+    def get_parameters(self, args: list[str]) -> dict[Flags, str]:
+        parameters = {}
+        for arg in args:
+            if '=' in arg:
+                flag, param = arg.split('=')
+                parameters[self.check_flags.to_flag(flag[2:])] = param
+        return parameters
+
+    def get_double_dash_flags(self, args: list[str])->list[Flags]:
         valid_double_flags = []
         input_flags =  list(filter(lambda arg: arg.startswith('--'), args))
-        input_flags = list(map(lambda _flag: _flag.replace('--', ''),  input_flags))
+        input_flags = list(map(lambda _flag: _flag.replace('-', ''),  input_flags))
         for flag in input_flags:
             in_flag = self.check_flags.to_flag(flag)
             self.check_flags.return_conflict(valid_double_flags, in_flag)
@@ -186,7 +274,7 @@ class Argv:
             for letter in flag:
                 long_flag = short_to_long[letter]
                 in_flag =  self.check_flags.to_flag(long_flag)
-                self.check_flags.return_conflict(input_flags, in_flag)
+                self.check_flags.return_conflict(one_dash_flags, in_flag)
                 one_dash_flags.append(in_flag)
         return one_dash_flags
 
@@ -196,19 +284,20 @@ class Argv:
         else:
             return path
 
-    def get_flags(self, argv: list)->list[Flags]:
-        current_flags = self.get_one_dash_flags(argv)
-        current_flags.extend(self.get_double_dash_flags(argv))
-        current_flags.extend(self.check_flags.dependant_flags(current_flags))
+    def get_flags(self, argv: list[str])->list[Flags]:
+        _current_flags = self.split_flags_params(argv)
+        current_flags = self.get_one_dash_flags(_current_flags)
+        current_flags.extend(self.get_double_dash_flags(_current_flags))
+        current_flags.extend(self.check_flags.dependant_flags(current_flags, self.get_parameters(argv)))
         current_flags.extend(self.default_flags.get_auto_flags(current_flags))
         return list(set(current_flags))
 
-    def parse_argv(self, argv: list)->Args:
+    def parse_argv(self, argv: list[str])->Args:
         if len(argv) > 1 and not argv[-1].startswith("-"):
             path = self.get_folder_name(argv[-1])
         else:
             path = str(Path.cwd())
-        argv1 = Args(path=path, flags=self.get_flags(argv))
+        argv1 = Args(path=path, flags=self.get_flags(argv), parameters=self.get_parameters(argv))
         return argv1
 
 
@@ -264,6 +353,22 @@ class InfoProvide:
                      Flags.u: f'[{atime_date_s}, {atime_time_s}]'}
         return kind_time
 
+    def get_time(self, path : str, flag: Union[Flags.c, Flags.u]=None)->str:
+        kind_time = self.kind_of_time(path)
+        return kind_time[flag] if flag else kind_time['mtime']
+
+    @staticmethod
+    def numeric_time(path: str) -> dict[Union[str, Flags], float]:
+        st = os.stat(path)
+        return {
+            'mtime': st.st_mtime,
+            Flags.c: st.st_ctime,
+            Flags.u: st.st_atime}
+
+    def get_time_to_sort(self, path : str, flag: Union[Flags.c, Flags.u]=None)->float:
+        kind_time = self.numeric_time(path)
+        return kind_time[flag] if flag else kind_time['mtime']
+
     @staticmethod
     def get_permission(path : str)->str:
         st = os.stat(path)
@@ -283,9 +388,15 @@ class InfoProvide:
             return Flags.u
         return None
 
-    def get_time(self, path : str, flag: Union[Flags.c, Flags.u]=None)->str:
-        kind_time = self.kind_of_time(path)
-        return kind_time[flag] if flag else kind_time['mtime']
+    @staticmethod
+    def get_uid_gid(path: str)->str:
+        try:
+            st = os.stat(path, follow_symlinks=True)
+            uid = getattr(st, "st_uid", None)
+            gid = getattr(st, "st_gid", None)
+            return f'{str(uid) if uid is not None else "NA"} {str(gid) if gid is not None else "NA"}'
+        except OSError:
+            return "NA"
 
     def provide_files(self,path:str, args: Args)->list[str]:
         if Flags.directory in args.flags:
@@ -302,15 +413,19 @@ class InfoProvide:
         final_names = []
         for name in names:
             full_path = os.path.join(args.path, name)
-            _file = File(inode=None, full_path=full_path, filename=name, size=None, time=None, permission=None)
+            _file = File(inode=None, full_path=full_path, filename=name,uid_gid=None,
+                         size=None, time=None, time_to_sort=None, permission=None)
             if Flags.size in args.flags:
                 _file.size = self.get_size(full_path)
             if Flags.time in args.flags:
                 _file.time = self.get_time(full_path, self.time_flags(args))
+                _file.time_to_sort = self.get_time_to_sort(full_path, self.time_flags(args))
             if Flags.permission in args.flags:
                 _file.permission = self.get_permission(full_path)
             if Flags.inode in args.flags:
                 _file.inode = self.get_inode(full_path)
+            if Flags.numericuidgid in args.flags:
+                _file.uid_gid = self.get_uid_gid(full_path)
             if os.path.isdir(full_path):
                 if Flags.recursive in args.flags:
                     child_args = dc_replace(args, path=full_path, flags=args.flags)
@@ -341,8 +456,28 @@ class Printing:
         return list_files
 
     @staticmethod
-    def sort_by_size(files: list[File]) -> list[File]:
-        files.sort(key=lambda f: int(f.size), reverse=True)
+    def version_key(name: str)->list:
+        parts = num_chunk.split(name)
+        for i in range(1, len(parts), 2):
+            parts[i] = int(parts[i])
+        return parts
+
+    def sort_by_param(self, flags: list[Flags], files: list[File]) -> list[File]:
+        reverse = True
+        if Flags.reverse in flags:
+            reverse = False
+        if Flags.S in flags:
+            files.sort(key=lambda f: int(f.size), reverse=reverse)
+        elif Flags.U in flags:
+            files.sort(reverse=reverse)
+        elif Flags.t in flags:
+            files.sort(key=lambda f: f.time_to_sort, reverse=reverse)
+        elif Flags.v in flags:
+            files.sort(key=lambda f: self.version_key(f.filename), reverse=reverse)
+        elif Flags.X in flags:
+            files.sort(key=lambda f: f.filename[-1], reverse=reverse)
+        elif Flags.width in flags:
+            files.sort(key=lambda f: len(f.filename), reverse=reverse)
         return files
 
     @staticmethod
@@ -371,11 +506,23 @@ class Printing:
         return painted
 
     @staticmethod
-    def format_row(args: Args)->str:
+    def format_name(flags: list[Flags], name:str)->str:
+        out = name
+        if Flags.hidecontrolchars in flags:
+            out = ''.join(chare if chare.isprintable() else '?' for chare in out)
+        if Flags.Q in flags:
+            out = f'"{out}"'
+        return out
+
+    @staticmethod
+    def format_end_row(args: Args)->str:
         if Flags.one in args.flags:
             return '\n'
         else:
-            return ' '
+            if Flags.m in args.flags:
+                return ','
+            else:
+                return ' '
 
     def _print(self,args: Args, info: Folder, intend=0)->None:
         list_fils = self.from_folder_to_list(info)
@@ -383,9 +530,8 @@ class Printing:
             for f in info.files_details:
                 if isinstance(f, Folder):
                     self._print(args, f, intend=intend+4)
-        if Flags.S in args.flags:
-            list_fils = self.sort_by_size(list_fils)
-        end_format = self.format_row(args)
+        list_fils = self.sort_by_param(args.flags, list_fils)
+        end_format = self.format_end_row(args)
         final_list = []
         if Flags.color in args.flags:
             painted = self.paint_folders(list_fils, base=args.path)
@@ -394,6 +540,7 @@ class Printing:
             final_list += list_fils
         if Flags.escape in args.flags:
             final_list = self.escape_text(final_list)
+        final_list = [self.format_name(args.flags, i) for i in final_list]
         return self.print_inline(final_list, end=end_format, intend=intend)
 
 
@@ -409,4 +556,5 @@ def main(argv: list)->None:
     printing._print(_args, _info)
 
 if __name__ == '__main__':
+    init(autoreset=False)
     main(sys.argv)
